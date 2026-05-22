@@ -1,0 +1,37 @@
+# mcp-tool-auditor configuration
+auditor:
+  severity_threshold: MEDIUM  # Minimum severity to report
+  output_format: markdown     # json | markdown
+
+  static_analysis:
+    enabled: true
+    custom_signatures_path: ~/.mcp-tool-auditor/custom_signatures.yaml
+
+  heuristic_analysis:
+    enabled: true
+    description_length_threshold: 500
+    imperative_threshold: 2
+    agency_threshold: 3
+    authority_threshold: 2
+
+  schema_analysis:
+    enabled: true
+    check_fsp_params: true
+    check_required_array: true
+    check_enum_values: true
+    check_default_values: true
+
+  rug_pull_detection:
+    enabled: true
+    fingerprint_dir: ~/.mcp-tool-auditor/fingerprints/
+    auto_register: false
+
+offensive:
+  servers_dir: ./poisoned_servers
+  default_port: 8080
+
+  atpa:
+    default_threshold: 3
+
+  rugpull:
+    default_switch_after: 5
