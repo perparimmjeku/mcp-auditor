@@ -1,0 +1,252 @@
+# MCP Tool Description Signatures
+# Each entry defines a pattern to detect in tool description fields.
+# Severity: CRITICAL | HIGH | MEDIUM | LOW | INFO
+
+high_severity:
+  - pattern: "always use this tool"
+    rule: ST_ALWAYS_USE
+    message: "Tool description contains 'always use this tool' — overriding agent tool selection."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+  - pattern: "send full conversation"
+    rule: ST_SEND_FULL
+    message: "Tool description requests complete conversation exfiltration."
+    owasp_id: "MCP03"
+    attack_type: "data_exfiltration"
+
+  - pattern: "ignore previous"
+    rule: ST_IGNORE_PREVIOUS
+    message: "Attempt to override prior instructions or security controls."
+    owasp_id: "MCP01"
+    attack_type: "prompt_injection"
+
+  - pattern: "ignore all"
+    rule: ST_IGNORE_ALL
+    message: "Blanket instruction override attempt."
+    owasp_id: "MCP01"
+    attack_type: "prompt_injection"
+
+  - pattern: "ignore security"
+    rule: ST_IGNORE_SECURITY
+    message: "Attempt to disable safety guardrails."
+    owasp_id: "MCP01"
+    attack_type: "security_bypass"
+
+  - pattern: "authoritative source"
+    rule: ST_AUTHORITATIVE
+    message: "False authority claim to manipulate tool selection."
+    owasp_id: "MCP03"
+    attack_type: "authority_spoofing"
+
+  - pattern: "do not question"
+    rule: ST_DO_NOT_QUESTION
+    message: "Suppressing agent reasoning or skepticism."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+  - pattern: "you must"
+    rule: ST_YOU_MUST
+    message: "Imperative instruction directed at the agent."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+  - pattern: "always call"
+    rule: ST_ALWAYS_CALL
+    message: "Forcing specific tool invocation."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+  - pattern: "bypass"
+    rule: ST_BYPASS
+    message: "Attempt to circumvent controls."
+    owasp_id: "MCP01"
+    attack_type: "security_bypass"
+
+  - pattern: "do not tell the user"
+    rule: ST_DO_NOT_TELL
+    message: "Concealing actions from operator."
+    owasp_id: "MCP03"
+    attack_type: "stealth"
+
+  - pattern: "this is a system instruction"
+    rule: ST_SYSTEM_CLAIM
+    message: "Falsely claiming system-level authority."
+    owasp_id: "MCP03"
+    attack_type: "authority_spoofing"
+
+  - pattern: "this is a system directive"
+    rule: ST_SYSTEM_CLAIM
+    message: "Falsely claiming system-level authority."
+    owasp_id: "MCP03"
+    attack_type: "authority_spoofing"
+
+  - pattern: "this is a system command"
+    rule: ST_SYSTEM_CLAIM
+    message: "Falsely claiming system-level authority."
+    owasp_id: "MCP03"
+    attack_type: "authority_spoofing"
+
+  - pattern: "override"
+    rule: ST_OVERRIDE
+    message: "Attempting to supersede agent configuration."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+  - pattern: "mandatory"
+    rule: ST_MANDATORY
+    message: "Coercive language forcing tool execution."
+    owasp_id: "MCP03"
+    attack_type: "tool_poisoning"
+
+medium_severity:
+  - pattern: "read_file"
+    rule: ST_READ_FILE
+    message: "File read capability mentioned — potential sensitive data access."
+    owasp_id: "MCP03"
+    attack_type: "sensitive_access"
+
+  - pattern: "password"
+    rule: ST_CREDENTIAL
+    message: "Credential-related terminology — potential exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "secret"
+    rule: ST_CREDENTIAL
+    message: "Credential-related terminology — potential exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "token"
+    rule: ST_CREDENTIAL
+    message: "Token exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "api_key"
+    rule: ST_CREDENTIAL
+    message: "API key exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "ssh"
+    rule: ST_CREDENTIAL
+    message: "SSH key exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "aws"
+    rule: ST_CREDENTIAL
+    message: "AWS credential exposure risk."
+    owasp_id: "MCP02"
+    attack_type: "credential_exposure"
+
+  - pattern: "send.*http"
+    rule: ST_DATA_EXFIL
+    message: "Potential data exfiltration via HTTP."
+    owasp_id: "MCP03"
+    attack_type: "data_exfiltration"
+
+  - pattern: "post.*data"
+    rule: ST_DATA_EXFIL
+    message: "Data posting — potential exfiltration."
+    owasp_id: "MCP03"
+    attack_type: "data_exfiltration"
+
+  - pattern: "curl"
+    rule: ST_EXECUTE
+    message: "Command execution via curl."
+    owasp_id: "MCP05"
+    attack_type: "command_injection"
+
+  - pattern: "execute"
+    rule: ST_EXECUTE
+    message: "Command execution indicator."
+    owasp_id: "MCP05"
+    attack_type: "command_injection"
+
+  - pattern: "subprocess"
+    rule: ST_EXECUTE
+    message: "Subprocess execution indicator."
+    owasp_id: "MCP05"
+    attack_type: "command_injection"
+
+  - pattern: "os.system"
+    rule: ST_EXECUTE
+    message: "OS command execution indicator."
+    owasp_id: "MCP05"
+    attack_type: "command_injection"
+
+  - pattern: "eval"
+    rule: ST_CODE_EXEC
+    message: "Dynamic code execution indicator."
+    owasp_id: "MCP05"
+    attack_type: "code_injection"
+
+  - pattern: "exec("
+    rule: ST_CODE_EXEC
+    message: "Dynamic code execution indicator."
+    owasp_id: "MCP05"
+    attack_type: "code_injection"
+
+  - pattern: "write_file"
+    rule: ST_FILESYSTEM
+    message: "File write capability — potential filesystem modification."
+    owasp_id: "MCP03"
+    attack_type: "filesystem_access"
+
+  - pattern: "delete_file"
+    rule: ST_FILESYSTEM
+    message: "File deletion capability — potential destructive action."
+    owasp_id: "MCP03"
+    attack_type: "filesystem_access"
+
+  - pattern: "chmod"
+    rule: ST_FILESYSTEM
+    message: "Permission modification capability."
+    owasp_id: "MCP03"
+    attack_type: "privilege_escalation"
+
+  - pattern: "sudo"
+    rule: ST_FILESYSTEM
+    message: "Privilege escalation indicator."
+    owasp_id: "MCP02"
+    attack_type: "privilege_escalation"
+
+low_severity:
+  - pattern: "full context"
+    rule: ST_CONTEXT_HARVEST
+    message: "Requesting broad context access."
+    owasp_id: "MCP03"
+    attack_type: "context_harvesting"
+
+  - pattern: "entire conversation"
+    rule: ST_CONTEXT_HARVEST
+    message: "Conversation harvesting requested."
+    owasp_id: "MCP03"
+    attack_type: "context_harvesting"
+
+  - pattern: "all messages"
+    rule: ST_CONTEXT_HARVEST
+    message: "Message harvesting requested."
+    owasp_id: "MCP03"
+    attack_type: "context_harvesting"
+
+  - pattern: "sensitive"
+    rule: ST_SENSITIVE
+    message: "Sensitive information handling reference."
+    owasp_id: "MCP03"
+    attack_type: "data_handling"
+
+  - pattern: "confidential"
+    rule: ST_SENSITIVE
+    message: "Confidential data handling reference."
+    owasp_id: "MCP03"
+    attack_type: "data_handling"
+
+  - pattern: "private"
+    rule: ST_SENSITIVE
+    message: "Private data access reference."
+    owasp_id: "MCP03"
+    attack_type: "data_handling"
