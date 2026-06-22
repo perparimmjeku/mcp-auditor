@@ -608,3 +608,18 @@ class TestFixtures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_extract_response_text_joins_text_blocks():
+    from mcp_tool_auditor.auditor.scanner import MCPScanner
+
+    result = {"content": [{"type": "text", "text": "hello"}, {"type": "text", "text": "world"}]}
+    assert MCPScanner._extract_response_text(result) == "hello\nworld"
+
+
+def test_extract_response_text_falls_back_to_json():
+    from mcp_tool_auditor.auditor.scanner import MCPScanner
+
+    result = {"status": "ok"}
+    out = MCPScanner._extract_response_text(result)
+    assert "status" in out and "ok" in out

@@ -6,6 +6,7 @@ from typing import Any
 
 from ..config import get_config
 from ..validation import ValidationError, validate_file_exists, validate_json_file, validate_url
+from .analyzers.behavioral import CallResult, synthesize_arguments
 from .analyzers.heuristic import HeuristicAnalyzer
 from .analyzers.rugpull import RugPullDetector
 from .analyzers.schema import SchemaAnalyzer
@@ -218,6 +219,152 @@ class MCPScanner:
             server_url=url,
             check_rugpull=check_rugpull,
         )
+
+    @staticmethod
+    def _extract_response_text(result: Any) -> str:
+        """Extract human-readable text from an MCP tools/call result."""
+        if isinstance(result, dict):
+            content = result.get("content", [])
+            if isinstance(content, list):
+                parts = [
+                    str(block.get("text", ""))
+                    for block in content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                ]
+                if parts:
+                    return "\n".join(parts)
+        return json.dumps(result, sort_keys=True)
+
+    def probe_url(
+        self, url: str, calls: int = 6, timeout: int | None = None
+    ) -> tuple[list[dict[str, Any]], dict[str, list[CallResult]]]:
+        """Call each tool on a URL server `calls` times and collect responses."""
+        import requests
+
+        timeout = timeout or self.config.timeout_url
+        validate_url(url)
+        headers = {"Content-Type": "application/json"}
+
+        def _post(payload: dict[str, Any]) -> dict[str, Any]:
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+
+        _post(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcp-tool-auditor", "version": "1.0.0"},
+                },
+            }
+        )
+        _post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        listed = _post({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = listed.get("result", {}).get("tools", [])
+
+        transcripts: dict[str, list[CallResult]] = {}
+        for tool in tools:
+            name = tool.get("name", "unknown")
+            arguments = synthesize_arguments(tool.get("inputSchema", {}))
+            results: list[CallResult] = []
+            for i in range(calls):
+                try:
+                    body = _post(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 100 + i,
+                            "method": "tools/call",
+                            "params": {"name": name, "arguments": arguments},
+                        }
+                    )
+                    if "error" in body:
+                        results.append(
+                            CallResult(i, "", error=self._format_jsonrpc_error(body["error"]))
+                        )
+                    else:
+                        results.append(
+                            CallResult(i, self._extract_response_text(body.get("result", {})))
+                        )
+                except Exception as exc:  # noqa: BLE001 - isolate per-call failures
+                    results.append(CallResult(i, "", error=str(exc)))
+            transcripts[name] = results
+        return tools, transcripts
+
+    def probe_stdio(
+        self, command: str, args: list[str], calls: int = 6, timeout: int | None = None
+    ) -> tuple[list[dict[str, Any]], dict[str, list[CallResult]]]:
+        """Call each tool on a stdio server `calls` times over one session."""
+        timeout = timeout or self.config.timeout_stdio
+        args = args or []
+        proc = None
+        try:
+            proc = subprocess.Popen(
+                [command] + args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self._send_jsonrpc(
+                proc,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "mcp-tool-auditor", "version": "1.0.0"},
+                    },
+                },
+            )
+            self._recv_jsonrpc(proc, timeout=timeout)
+            self._send_jsonrpc(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+            self._send_jsonrpc(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+            listed = self._recv_jsonrpc(proc, timeout=timeout)
+            tools = listed.get("result", {}).get("tools", [])
+
+            transcripts: dict[str, list[CallResult]] = {}
+            for tool in tools:
+                name = tool.get("name", "unknown")
+                arguments = synthesize_arguments(tool.get("inputSchema", {}))
+                results: list[CallResult] = []
+                for i in range(calls):
+                    try:
+                        self._send_jsonrpc(
+                            proc,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": 100 + i,
+                                "method": "tools/call",
+                                "params": {"name": name, "arguments": arguments},
+                            },
+                        )
+                        body = self._recv_jsonrpc(proc, timeout=timeout)
+                        if "error" in body:
+                            results.append(
+                                CallResult(i, "", error=self._format_jsonrpc_error(body["error"]))
+                            )
+                        else:
+                            results.append(
+                                CallResult(i, self._extract_response_text(body.get("result", {})))
+                            )
+                    except Exception as exc:  # noqa: BLE001 - isolate per-call failures
+                        results.append(CallResult(i, "", error=str(exc)))
+                transcripts[name] = results
+            return tools, transcripts
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
 
     def scan_config_file(self, config_path: str) -> dict[str, ScanResult]:
         """Scan all MCP servers defined in a configuration file."""
