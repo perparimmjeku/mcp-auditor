@@ -12,7 +12,7 @@ import os
 import sys
 import time
 
-from .auditor import remediation
+from .auditor import discovery, remediation
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
 from .auditor.models import SEVERITY_LEVELS, ScanResult, Severity
@@ -178,7 +178,11 @@ Examples:
         help="Path to JSON file with tool definitions",
     )
 
-    for parser_with_scan_options in (stdio_p, config_p, import_p):
+    local_p = scan_sub.add_parser(
+        "local", help="Auto-discover and scan MCP configs on this machine"
+    )
+
+    for parser_with_scan_options in (stdio_p, config_p, import_p, local_p):
         _add_scan_options(parser_with_scan_options)
     _add_scan_options(url_p, include_rugpull=True)
 
@@ -411,6 +415,19 @@ def _run_scan(args, scanner: MCPScanner):
         return {args.url: result}
     if args.scan_type == "config":
         return scanner.scan_config_file(args.path)
+    if args.scan_type == "local":
+        configs = discovery.discover_configs()
+        if not configs:
+            logger.warning("No MCP client configs discovered in known locations.")
+            return {}
+        merged: dict = {}
+        for cfg in configs:
+            try:
+                for name, result in scanner.scan_config_file(str(cfg)).items():
+                    merged[f"{cfg.name}:{name}"] = result
+            except Exception as exc:
+                logger.warning("Skipping %s: %s", cfg, exc)
+        return merged
     if args.scan_type == "import":
         data = validate_json_file(args.path)
         if isinstance(data, list):
