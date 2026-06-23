@@ -89,6 +89,7 @@ class SarifReporter:
                             "attack_type": finding.attack_type,
                             "tool_name": finding.tool_name,
                             "field": finding.field,
+                            "confidence": finding.confidence,
                         },
                     }
                 )

@@ -120,3 +120,48 @@ def test_explain_rule_and_list():
     res2 = _run(["--no-log-file", "--no-metrics", "explain", "--list"])
     assert res2.returncode == 0
     assert "BEHAV_ATPA_TRANSITION" in res2.stdout
+
+
+def test_scan_min_confidence_and_suppress(tmp_path):
+    # a poisoned tool fixture yields findings of varying confidence
+    res = _run(
+        [
+            "--no-log-file",
+            "--no-metrics",
+            "scan",
+            "import",
+            "tests/fixtures/poisoned_tools.json",
+            "--format",
+            "json",
+            "--min-confidence",
+            "HIGH",
+        ]
+    )
+    assert res.returncode == 0, res.stderr
+    confidences = {
+        finding["confidence"]
+        for server in json.loads(res.stdout)["servers"].values()
+        for finding in server["findings"]
+    }
+    assert confidences <= {"HIGH"}  # only HIGH-confidence remain
+
+    # suppressing a rule removes it
+    res2 = _run(
+        [
+            "--no-log-file",
+            "--no-metrics",
+            "scan",
+            "import",
+            "tests/fixtures/poisoned_tools.json",
+            "--format",
+            "json",
+            "--suppress",
+            "HEUR_IMPERATIVE",
+        ]
+    )
+    rules = {
+        finding["rule"]
+        for server in json.loads(res2.stdout)["servers"].values()
+        for finding in server["findings"]
+    }
+    assert "HEUR_IMPERATIVE" not in rules

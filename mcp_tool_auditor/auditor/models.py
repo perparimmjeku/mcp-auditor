@@ -35,11 +35,16 @@ class Finding:
     tool_name: str | None = None
     file: str | None = None
     line: int | None = None
+    confidence: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize and validate finding fields."""
         if not isinstance(self.severity, Severity):
             self.severity = Severity(str(self.severity).upper())
+        if self.confidence is None:
+            from .confidence import confidence_for
+
+            self.confidence = confidence_for(self.rule)
         if not self.rule:
             raise ValueError("Finding.rule cannot be empty")
         if not self.message:
@@ -60,6 +65,7 @@ class Finding:
             "tool_name": self.tool_name,
             "file": self.file,
             "line": self.line,
+            "confidence": self.confidence,
         }
 
 

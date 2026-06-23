@@ -12,7 +12,7 @@ import os
 import sys
 import time
 
-from .auditor import discovery, remediation
+from .auditor import discovery, remediation, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
 from .auditor.models import SEVERITY_LEVELS, ScanResult, Severity
@@ -79,6 +79,25 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
         default=None,
         help="Exit non-zero (code 2) if any finding at or above this severity is present (CI gate)",
+    )
+    parser.add_argument(
+        "--min-confidence",
+        choices=["HIGH", "MEDIUM", "LOW"],
+        default=None,
+        help="Only report findings at or above this confidence level",
+    )
+    parser.add_argument(
+        "--suppress",
+        action="append",
+        default=[],
+        metavar="RULE",
+        help="Suppress a finding rule (repeatable)",
+    )
+    parser.add_argument(
+        "--suppressions",
+        default=None,
+        metavar="FILE",
+        help="YAML/JSON file of {rule, tool?} suppression entries",
     )
     if include_rugpull:
         parser.add_argument(
@@ -302,6 +321,9 @@ Examples:
             default=None,
             help="Exit non-zero (code 2) if a finding at or above this severity is present",
         )
+        sub.add_argument("--min-confidence", choices=["HIGH", "MEDIUM", "LOW"], default=None)
+        sub.add_argument("--suppress", action="append", default=[], metavar="RULE")
+        sub.add_argument("--suppressions", default=None, metavar="FILE")
     for sub in (beh_stdio, beh_url):
         sub.add_argument("--yes", action="store_true", help="Assume authorization (skip ack)")
 
@@ -382,6 +404,7 @@ def _handle_scan(args, scanner: MCPScanner, config, metrics_collector: MetricsCo
         results = _run_scan(args, scanner)
         severity = args.severity or config.min_severity
         results = _filter_results(results, severity)
+        results = _apply_triage(results, args)
 
         output_format = args.format or config.output_format
         output = _render_report(results, output_format)
@@ -449,6 +472,29 @@ def _run_scan(args, scanner: MCPScanner):
             raise ValidationError("Imported JSON must contain a tools array")
         return {args.path: scanner.scan_tool_list(tools)}
     raise ValidationError("Specify 'stdio', 'url', 'config', or 'import'")
+
+
+_CONFIDENCE_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+
+def _apply_triage(results, args):
+    """Apply suppressions and the min-confidence filter to results."""
+    entries = []
+    suppress_file = getattr(args, "suppressions", None)
+    if suppress_file:
+        entries = suppressions.load(suppress_file)
+    results = suppressions.apply(results, rules=getattr(args, "suppress", []), entries=entries)
+
+    min_conf = getattr(args, "min_confidence", None)
+    if min_conf:
+        threshold = _CONFIDENCE_RANK[min_conf]
+        for result in results.values():
+            result.findings = [
+                f
+                for f in result.findings
+                if _CONFIDENCE_RANK.get(f.confidence or "MEDIUM", 1) <= threshold
+            ]
+    return results
 
 
 def _render_report(results, output_format: str) -> str:
@@ -579,6 +625,7 @@ def _handle_behavior(args, scanner: MCPScanner, config) -> None:
 
     severity = args.severity or config.min_severity
     results = _filter_results(results, severity)
+    results = _apply_triage(results, args)
     output_format = args.format or config.output_format
     output = _render_report(results, output_format)
     if args.output:
@@ -599,6 +646,7 @@ def _handle_source_scan(args, config) -> None:
 
     severity = args.severity or config.min_severity
     results = _filter_results(results, severity)
+    results = _apply_triage(results, args)
     output_format = args.format or config.output_format
     output = _render_report(results, output_format)
     if args.output:
