@@ -15,12 +15,14 @@ import time
 from .auditor import discovery, remediation, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
-from .auditor.models import SEVERITY_LEVELS, ScanResult, Severity
+from .auditor.models import SEVERITY_LEVELS, Finding, ScanResult, Severity
 from .auditor.reporters.json_reporter import JSONReporter
 from .auditor.reporters.markdown_reporter import MarkdownReporter
+from .auditor.reporters.pentest_reporter import PentestReporter
 from .auditor.reporters.sarif_reporter import SarifReporter
 from .auditor.scanner import MCPScanner
 from .config import load_config, set_config
+from .engagement import Engagement
 from .logging_config import LoggerFactory
 from .metrics import MetricsCollector, ScanMetrics
 from .offensive.poisoner import PoisonedServerGenerator
@@ -59,9 +61,10 @@ def _print_rugpull_findings(findings) -> None:
 def _add_scan_options(parser, include_rugpull: bool = False) -> None:
     parser.add_argument(
         "--format",
-        choices=["json", "markdown", "sarif"],
+        choices=["json", "markdown", "sarif", "pentest"],
         default=None,
-        help="Output format (default: config value or markdown)",
+        help="Output format (default: config value or markdown). 'pentest' is a "
+        "client-ready report with engagement header, executive summary, and evidence.",
     )
     parser.add_argument(
         "--output",
@@ -172,6 +175,14 @@ Examples:
     parser.add_argument(
         "--config",
         help="Path to mcp-tool-auditor JSON/YAML config",
+    )
+    parser.add_argument(
+        "--engagement",
+        metavar="FILE",
+        help="Path to an engagement/scope JSON/YAML file (client, tester, dates, "
+        "allowed_targets). Scans against stdio/url targets refuse to proceed if the "
+        "target isn't in allowed_targets, and --format pentest reports use it for "
+        "the engagement header. See README for the file format.",
     )
     parser.add_argument(
         "--no-log-file",
@@ -335,7 +346,7 @@ Examples:
 
     for sub in (beh_stdio, beh_url, beh_import):
         sub.add_argument("--calls", type=int, default=6, help="Calls per tool (default 6)")
-        sub.add_argument("--format", choices=["json", "markdown", "sarif"], default=None)
+        sub.add_argument("--format", choices=["json", "markdown", "sarif", "pentest"], default=None)
         sub.add_argument("--severity", default=None)
         sub.add_argument("--output", default=None)
         sub.add_argument(
@@ -383,6 +394,36 @@ Examples:
             help="POST newly-observed findings to this webhook URL as JSON",
         )
 
+    # --- retest ---
+    retest_parser = subparsers.add_parser(
+        "retest",
+        help="Re-scan and diff against a prior --format json report (Fixed/Still Present/New)",
+    )
+    retest_parser.add_argument(
+        "--baseline",
+        required=True,
+        metavar="FILE",
+        help="Prior scan report produced with 'scan ... --format json -o FILE'",
+    )
+    retest_sub = retest_parser.add_subparsers(dest="scan_type")
+
+    rt_stdio = retest_sub.add_parser("stdio", help="Retest a stdio-based MCP server")
+    rt_stdio.add_argument("server_command", type=ArgparseValidation.command)
+    rt_stdio.add_argument("args", nargs=argparse.REMAINDER)
+
+    rt_url = retest_sub.add_parser("url", help="Retest a URL-based MCP server")
+    rt_url.add_argument("url", type=ArgparseValidation.url)
+
+    rt_config = retest_sub.add_parser("config", help="Retest all MCP servers in a config file")
+    rt_config.add_argument("path", type=ArgparseValidation.file)
+
+    rt_import = retest_sub.add_parser("import", help="Retest tool definitions from a JSON file")
+    rt_import.add_argument("path", type=ArgparseValidation.file)
+
+    for retest_p in (rt_stdio, rt_config, rt_import):
+        _add_scan_options(retest_p)
+    _add_scan_options(rt_url, include_rugpull=True)
+
     # --- source-scan ---
     src_parser = subparsers.add_parser(
         "source-scan", help="Scan MCP server source code for shell-injection (Prompt-In-Shell-Out)"
@@ -421,6 +462,14 @@ def main() -> None:
         logger.error("Failed to load config: %s", exc)
         sys.exit(1)
 
+    engagement = None
+    if args.engagement:
+        try:
+            engagement = Engagement.from_file(args.engagement)
+        except Exception as exc:
+            logger.error("Failed to load engagement/scope file: %s", exc)
+            sys.exit(1)
+
     metrics_collector = MetricsCollector(
         metrics_file=args.metrics_file,
         enabled=not args.no_metrics,
@@ -429,23 +478,25 @@ def main() -> None:
 
     try:
         if args.command == "scan":
-            _handle_scan(args, scanner, config, metrics_collector)
+            _handle_scan(args, scanner, config, metrics_collector, engagement=engagement)
         elif args.command == "register":
-            _handle_register(args, scanner)
+            _handle_register(args, scanner, engagement=engagement)
         elif args.command == "check":
-            _handle_check(args, scanner)
+            _handle_check(args, scanner, engagement=engagement)
         elif args.command == "generate":
             _handle_generate(args)
         elif args.command == "attack":
             _handle_attack(args)
         elif args.command == "behavior":
-            _handle_behavior(args, scanner, config)
+            _handle_behavior(args, scanner, config, engagement=engagement)
         elif args.command == "watch":
-            _handle_watch(args, scanner)
+            _handle_watch(args, scanner, engagement=engagement)
+        elif args.command == "retest":
+            _handle_retest(args, scanner, config, engagement=engagement)
         elif args.command == "explain":
             _handle_explain(args)
         elif args.command == "source-scan":
-            _handle_source_scan(args, config)
+            _handle_source_scan(args, config, engagement=engagement)
         else:
             parser.print_help()
     except KeyboardInterrupt:
@@ -479,17 +530,19 @@ def _apply_llm_judge(results: dict[str, ScanResult], enabled: bool) -> None:
             )
 
 
-def _handle_scan(args, scanner: MCPScanner, config, metrics_collector: MetricsCollector) -> None:
+def _handle_scan(
+    args, scanner: MCPScanner, config, metrics_collector: MetricsCollector, engagement=None
+) -> None:
     start = time.time()
     try:
-        results = _run_scan(args, scanner)
+        results = _run_scan(args, scanner, engagement=engagement)
         _apply_llm_judge(results, getattr(args, "llm_judge", False))
         severity = args.severity or config.min_severity
         results = _filter_results(results, severity)
         results = _apply_triage(results, args)
 
         output_format = args.format or config.output_format
-        output = _render_report(results, output_format)
+        output = _render_report(results, output_format, engagement=engagement)
 
         if args.output:
             output_path = validate_output_path(args.output)
@@ -528,11 +581,15 @@ def _parse_headers(raw: list[str]) -> dict[str, str]:
     return headers
 
 
-def _run_scan(args, scanner: MCPScanner):
+def _run_scan(args, scanner: MCPScanner, engagement=None):
     if args.scan_type == "stdio":
+        if engagement is not None:
+            engagement.check_target(args.server_command)
         result = scanner.scan_server_stdio(args.server_command, args.args)
         return {f"stdio:{args.server_command}": result}
     if args.scan_type == "url":
+        if engagement is not None:
+            engagement.check_target(args.url)
         result = scanner.scan_server_url(
             args.url,
             check_rugpull=args.check_rugpull,
@@ -592,11 +649,15 @@ def _apply_triage(results, args):
     return results
 
 
-def _render_report(results, output_format: str) -> str:
+def _render_report(
+    results, output_format: str, engagement=None, fixed: list[tuple[str, Finding]] | None = None
+) -> str:
     if output_format == "json":
         return JSONReporter.generate(results)
     if output_format == "sarif":
         return SarifReporter.generate(results)
+    if output_format == "pentest":
+        return PentestReporter.generate(results, engagement=engagement, fixed=fixed)
     return MarkdownReporter.generate(results)
 
 
@@ -637,6 +698,97 @@ def _filter_results(results, min_severity: str):
         )
         for name, result in results.items()
     }
+
+
+def _finding_from_dict(data: dict) -> Finding:
+    """Reconstruct a Finding from a prior `--format json` report entry."""
+    return Finding(
+        severity=data["severity"],
+        rule=data["rule"],
+        message=data["message"],
+        owasp_id=data["owasp_id"],
+        attack_type=data.get("attack_type", "unknown"),
+        field=data.get("field"),
+        tool_name=data.get("tool_name"),
+        file=data.get("file"),
+        line=data.get("line"),
+        confidence=data.get("confidence"),
+        retest_status="FIXED",
+    )
+
+
+def _load_baseline_report(path: str) -> dict[str, list[dict]]:
+    """Load a prior `scan ... --format json` report as server_name -> findings."""
+    data = validate_json_file(path)
+    if not isinstance(data, dict) or "servers" not in data:
+        raise ValidationError(
+            f"'{path}' doesn't look like an mcp-tool-auditor JSON report (missing 'servers')"
+        )
+    return {name: server.get("findings", []) for name, server in data["servers"].items()}
+
+
+def _handle_retest(args, scanner: MCPScanner, config, engagement=None) -> None:
+    baseline_servers = _load_baseline_report(args.baseline)
+
+    results = _run_scan(args, scanner, engagement=engagement)
+    _apply_llm_judge(results, getattr(args, "llm_judge", False))
+    severity = args.severity or config.min_severity
+    results = _filter_results(results, severity)
+    results = _apply_triage(results, args)
+
+    # With exactly one target on each side, match findings by (rule, tool,
+    # field) alone -- the baseline and this run's target identifier strings
+    # often differ even for "the same target" (e.g. two `import` snapshots
+    # with different filenames, or a URL scanned with different query
+    # params). With multiple targets (config/local), keep server_name in the
+    # key so distinct servers aren't conflated with each other.
+    single_target = len(results) == 1 and len(baseline_servers) == 1
+
+    def _scope(server_name: str) -> str:
+        return "__single_target__" if single_target else server_name
+
+    def _key(server_name: str, rule, tool_name, field) -> tuple:
+        return (_scope(server_name), rule, tool_name, field)
+
+    baseline_index: dict[tuple, tuple[str, dict]] = {}
+    for server_name, findings in baseline_servers.items():
+        for finding_dict in findings:
+            key = _key(
+                server_name,
+                finding_dict.get("rule"),
+                finding_dict.get("tool_name"),
+                finding_dict.get("field"),
+            )
+            baseline_index[key] = (server_name, finding_dict)
+
+    current_keys: set[tuple] = set()
+    for server_name, result in results.items():
+        for finding in result.findings:
+            key = _key(server_name, finding.rule, finding.tool_name, finding.field)
+            current_keys.add(key)
+            finding.retest_status = "STILL_PRESENT" if key in baseline_index else "NEW"
+
+    fixed: list[tuple[str, Finding]] = [
+        (orig_server_name, _finding_from_dict(finding_dict))
+        for key, (orig_server_name, finding_dict) in baseline_index.items()
+        if key not in current_keys
+    ]
+
+    output_format = args.format or config.output_format
+    output = _render_report(results, output_format, engagement=engagement, fixed=fixed)
+    if args.output:
+        output_path = validate_output_path(args.output)
+        output_path.write_text(output, encoding="utf-8")
+        print(f"[+] Report written to {output_path}")
+    else:
+        print(output)
+
+    still_present = sum(
+        1 for r in results.values() for f in r.findings if f.retest_status == "STILL_PRESENT"
+    )
+    new = sum(1 for r in results.values() for f in r.findings if f.retest_status == "NEW")
+    print(f"[+] Retest: {len(fixed)} fixed, {still_present} still present, {new} new")
+    _apply_fail_on(results, getattr(args, "fail_on", None))
 
 
 def _metrics_from_results(results, duration: float, success: bool) -> ScanMetrics:
@@ -692,7 +844,7 @@ def _behavior_result(tools, transcripts, server_url=None) -> ScanResult:
     )
 
 
-def _handle_behavior(args, scanner: MCPScanner, config) -> None:
+def _handle_behavior(args, scanner: MCPScanner, config, engagement=None) -> None:
     if args.behavior_type == "import":
         data = validate_json_file(args.path)
         if not isinstance(data, dict):
@@ -708,6 +860,8 @@ def _handle_behavior(args, scanner: MCPScanner, config) -> None:
             print("[*] Operation cancelled")
             sys.exit(1)
         if args.behavior_type == "url":
+            if engagement is not None:
+                engagement.check_target(args.url)
             tools, transcripts = scanner.probe_url(
                 args.url,
                 calls=args.calls,
@@ -716,6 +870,8 @@ def _handle_behavior(args, scanner: MCPScanner, config) -> None:
             )
             results = {args.url: _behavior_result(tools, transcripts, server_url=args.url)}
         else:
+            if engagement is not None:
+                engagement.check_target(args.server_command)
             tools, transcripts = scanner.probe_stdio(
                 args.server_command, args.args, calls=args.calls
             )
@@ -727,7 +883,7 @@ def _handle_behavior(args, scanner: MCPScanner, config) -> None:
     results = _filter_results(results, severity)
     results = _apply_triage(results, args)
     output_format = args.format or config.output_format
-    output = _render_report(results, output_format)
+    output = _render_report(results, output_format, engagement=engagement)
     if args.output:
         output_path = validate_output_path(args.output)
         output_path.write_text(output, encoding="utf-8")
@@ -737,7 +893,7 @@ def _handle_behavior(args, scanner: MCPScanner, config) -> None:
     _apply_fail_on(results, getattr(args, "fail_on", None))
 
 
-def _handle_source_scan(args, config) -> None:
+def _handle_source_scan(args, config, engagement=None) -> None:
     from .auditor.source.scanner import SourceScanner
 
     if not os.path.exists(args.path):
@@ -748,7 +904,7 @@ def _handle_source_scan(args, config) -> None:
     results = _filter_results(results, severity)
     results = _apply_triage(results, args)
     output_format = args.format or config.output_format
-    output = _render_report(results, output_format)
+    output = _render_report(results, output_format, engagement=engagement)
     if args.output:
         output_path = validate_output_path(args.output)
         output_path.write_text(output, encoding="utf-8")
@@ -771,12 +927,16 @@ def _handle_explain(args) -> None:
     print(f"  {remediation.get_remediation(rule)}")
 
 
-def _handle_register(args, scanner: MCPScanner) -> None:
+def _handle_register(args, scanner: MCPScanner, engagement=None) -> None:
     detector = RugPullDetector(fingerprint_dir=scanner.config.fingerprint_dir)
     if args.register_type == "url":
+        if engagement is not None:
+            engagement.check_target(args.url)
         result = scanner.scan_server_url(args.url)
         server_id = args.url
     elif args.register_type == "stdio":
+        if engagement is not None:
+            engagement.check_target(args.server_command)
         result = scanner.scan_server_stdio(args.server_command, args.args)
         server_id = f"stdio:{args.server_command} {' '.join(args.args)}"
     else:
@@ -787,12 +947,16 @@ def _handle_register(args, scanner: MCPScanner) -> None:
     print(f"[+] Fingerprint stored at: {fingerprint_path}")
 
 
-def _handle_check(args, scanner: MCPScanner) -> None:
+def _handle_check(args, scanner: MCPScanner, engagement=None) -> None:
     detector = RugPullDetector(fingerprint_dir=scanner.config.fingerprint_dir)
     if args.check_type == "url":
+        if engagement is not None:
+            engagement.check_target(args.url)
         result = scanner.scan_server_url(args.url)
         findings = detector.check(args.url, _get_tools_from_result(result))
     elif args.check_type == "stdio":
+        if engagement is not None:
+            engagement.check_target(args.server_command)
         result = scanner.scan_server_stdio(args.server_command, args.args)
         server_id = f"stdio:{args.server_command} {' '.join(args.args)}"
         findings = detector.check(server_id, _get_tools_from_result(result))
@@ -801,10 +965,12 @@ def _handle_check(args, scanner: MCPScanner) -> None:
     _print_rugpull_findings(findings)
 
 
-def _handle_watch(args, scanner: MCPScanner) -> None:
+def _handle_watch(args, scanner: MCPScanner, engagement=None) -> None:
     from .watch import WatchDaemon
 
     if args.watch_type == "url":
+        if engagement is not None:
+            engagement.check_target(args.url)
 
         def scan_once():
             result = scanner.scan_server_url(

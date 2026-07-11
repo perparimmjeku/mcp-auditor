@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-12
+
+### Added
+- **Engagement/scope guardrails (`--engagement <file>`)** — declare authorized targets
+  (`allowed_targets`, exact or glob) plus client/tester/date metadata once; `scan
+  stdio`/`url`, `behavior stdio`/`url`, `watch url`, `register`, and `check` refuse to
+  touch a target outside scope before making any network/subprocess call.
+- **Client-ready reports (`--format pentest`)** — engagement header, executive summary,
+  methodology (derived from what actually ran), and per-finding evidence (the real
+  tool/resource/prompt text that triggered it) plus remediation guidance. The existing
+  markdown/JSON/SARIF formats stay CI/dev-facing; this one is built to hand to a client.
+- **`retest --baseline <report>`** — re-scans and diffs against a prior `--format json`
+  report into Fixed / Still Present / New. Matches findings by (rule, tool, field) when
+  there's one target on each side (so two differently-named snapshots of "the same
+  target" still diff correctly), or by server name for multi-target config/local
+  baselines. `--fail-on` gates on unresolved (Still Present + New) findings only.
+
 ## [1.3.0] - 2026-07-12
 
 ### Added
@@ -103,6 +120,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.4.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.4.0
 [1.3.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.3.0
 [1.2.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.2.0
 [1.1.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.1.0

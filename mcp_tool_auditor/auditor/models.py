@@ -36,6 +36,9 @@ class Finding:
     file: str | None = None
     line: int | None = None
     confidence: str | None = None
+    # Set only by `retest` (STILL_PRESENT/NEW on current findings; FIXED on
+    # findings from the baseline that no longer reproduce). None for a plain scan.
+    retest_status: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize and validate finding fields."""
@@ -66,6 +69,7 @@ class Finding:
             "file": self.file,
             "line": self.line,
             "confidence": self.confidence,
+            "retest_status": self.retest_status,
         }
 
 

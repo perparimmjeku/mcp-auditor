@@ -10,7 +10,7 @@
 
 > **Most MCP scanners read tool definitions. This one also watches tool _behavior_** — it calls tools and catches Advanced Tool Poisoning Attacks (ATPA) that look benign on paper and turn malicious at runtime.
 
-`mcp-tool-auditor` is a comprehensive security scanner for Model Context Protocol (MCP) servers. It detects tool poisoning, full-schema poisoning (FSP), rug-pull attacks (including newly shadowing tools), and ATPA (Advanced Tool Poisoning Attacks), while mapping findings to the OWASP MCP Top 10 framework.
+`mcp-tool-auditor` is a comprehensive security scanner for Model Context Protocol (MCP) servers. It detects tool poisoning, full-schema poisoning (FSP), rug-pull attacks (including tool shadowing and tampered baselines), cross-tool composition risk, and ATPA (Advanced Tool Poisoning Attacks) — across tool, resource, prompt, and server-instruction definitions, not just tool descriptions — while mapping findings to the OWASP MCP Top 10 framework.
 
 The project also includes authorized offensive tooling for penetration testers and security researchers to simulate realistic MCP attack scenarios in controlled environments.
 
@@ -32,6 +32,9 @@ The project also includes authorized offensive tooling for penetration testers a
 | LLM Semantic Judge (opt-in) | `--llm-judge` sends descriptions to Claude to catch paraphrased poisoning that dodges static signatures |
 | OAuth 2.1 Detection | Reports MCP 2025-06-18 OAuth-protected servers clearly (401 + `WWW-Authenticate`) instead of a generic error |
 | Continuous Monitoring | `watch` re-scans on an interval and alerts a webhook on newly-observed findings |
+| Engagement Scope Guardrails | `--engagement` refuses to scan targets outside an authorized-scope file |
+| Client-Ready Reporting | `--format pentest` — engagement header, executive summary, methodology, evidence, remediation |
+| Retest Workflow | `retest --baseline <report>` diffs a re-scan into Fixed / Still Present / New |
 | OWASP Mapping | Labels findings across the OWASP MCP Top 10 (active detection for MCP01, MCP02, MCP03, MCP05) |
 
 ### Offensive Tooling
@@ -179,6 +182,59 @@ This is opt-in only and never runs by default — it sends third-party server co
 Anthropic's API, which is a data-handling decision the operator must make explicitly.
 Flagged items get the `LLM_SEMANTIC_POISONING` rule (MEDIUM confidence; review the exact
 wording before rejecting a tool on this alone).
+
+### Real Pentest Engagements: Scope, Client Reports, Retest
+
+Three pieces built specifically for running this as part of a real, authorized
+engagement rather than a CI job:
+
+**1. Engagement/scope file** — declare the authorized scope once; scans against a
+stdio/url target outside it are refused before anything touches the network:
+
+```json
+{
+  "client": "Acme Corp",
+  "tester": "J. Doe",
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-15",
+  "notes": "Authorized MCP tool poisoning assessment, ref. SOW-1234",
+  "allowed_targets": ["https://*.acme-client.example.com/*", "https://mcp.acme.example.com/mcp"]
+}
+```
+
+```bash
+mcp-tool-auditor --engagement engagement.json scan url https://mcp.acme.example.com/mcp
+# scan url https://other-company.example.com/mcp would be refused before connecting
+```
+
+`allowed_targets` entries are exact strings or shell-glob patterns. An engagement file
+with no `allowed_targets` still works — it just carries report metadata (client/tester/
+dates) without restricting scope. Scope is enforced for `scan stdio`/`url`, `behavior
+stdio`/`url`, `watch url`, `register`, and `check`; `scan config`/`local`/`watch config`
+don't currently enforce it per-server since they aggregate arbitrary local configs.
+
+**2. Client-ready reports** — `--format pentest` produces an engagement header,
+executive summary, methodology section, and full evidence (the actual tool/resource/
+prompt text) plus remediation guidance per finding — built to hand to a client, not
+just a CI log:
+
+```bash
+mcp-tool-auditor --engagement engagement.json scan url https://mcp.acme.example.com/mcp \
+  --format pentest -o report.md
+```
+
+**3. Retest** — after the client remediates, re-scan and diff against the original
+report to show what's Fixed / Still Present / New:
+
+```bash
+mcp-tool-auditor scan url https://mcp.acme.example.com/mcp --format json -o baseline.json
+# ... client remediates ...
+mcp-tool-auditor retest --baseline baseline.json url https://mcp.acme.example.com/mcp \
+  --format pentest -o retest-report.md
+```
+
+`--fail-on` on `retest` gates on unresolved findings only (Still Present + New) — a
+clean retest where everything's Fixed exits 0.
 
 ### Auto-Discover and Scan Local MCP Configs
 
@@ -344,6 +400,7 @@ mcp-tool-auditor/
 │   ├── security.py
 │   ├── validation.py
 │   ├── watch.py
+│   ├── engagement.py
 │   ├── auditor/
 │   │   ├── __init__.py
 │   │   ├── scanner.py
@@ -369,6 +426,7 @@ mcp-tool-auditor/
 │   │       ├── __init__.py
 │   │       ├── json_reporter.py
 │   │       ├── markdown_reporter.py
+│   │       ├── pentest_reporter.py
 │   │       └── sarif_reporter.py
 │   └── offensive/
 │       ├── __init__.py
@@ -377,14 +435,30 @@ mcp-tool-auditor/
 │       └── rugpull_sim.py
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py
 │   ├── test_scanner.py
 │   ├── test_patterns.py
 │   ├── test_behavioral.py
-│   ├── test_cli_behavior.py
 │   ├── test_behavior_integration.py
+│   ├── test_cli_behavior.py
+│   ├── test_confidence_suppressions.py
+│   ├── test_discovery.py
+│   ├── test_engagement.py
+│   ├── test_http_auth_session.py
+│   ├── test_llm_judge.py
+│   ├── test_pentest_reporter.py
+│   ├── test_remediation.py
+│   ├── test_retest.py
+│   ├── test_rugpull_signing.py
+│   ├── test_sarif_reporter.py
+│   ├── test_scope_enforcement.py
+│   ├── test_source_scan.py
+│   ├── test_surface_scanning.py
+│   ├── test_watch.py
 │   └── fixtures/
 │       ├── __init__.py
-│       └── poisoned_tools.json
+│       ├── poisoned_tools.json
+│       └── source/
 ├── config.yaml
 ├── pyproject.toml
 ├── CONTRIBUTING.md
@@ -456,7 +530,7 @@ The authors assume no liability for misuse, unauthorized testing, or damages cau
 ```python
 """MCP Tool Auditor package."""
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __author__ = "Përparim Mjeku"
 __license__ = "MIT"
 ```
