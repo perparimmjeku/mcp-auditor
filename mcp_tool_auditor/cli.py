@@ -99,6 +99,14 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         metavar="FILE",
         help="YAML/JSON file of {rule, tool?} suppression entries",
     )
+    parser.add_argument(
+        "--llm-judge",
+        action="store_true",
+        dest="llm_judge",
+        help="Also judge tool/resource/prompt text with an LLM (Anthropic) to catch "
+        "semantically-poisoned phrasing static signatures miss. Opt-in only: sends "
+        "third-party server content to Anthropic's API. Requires ANTHROPIC_API_KEY.",
+    )
     if include_rugpull:
         parser.add_argument(
             "--check-rugpull",
@@ -342,6 +350,39 @@ Examples:
     for sub in (beh_stdio, beh_url):
         sub.add_argument("--yes", action="store_true", help="Assume authorization (skip ack)")
 
+    # --- watch ---
+    watch_parser = subparsers.add_parser(
+        "watch", help="Continuously monitor MCP servers and alert a webhook on new findings"
+    )
+    watch_sub = watch_parser.add_subparsers(dest="watch_type")
+
+    watch_url = watch_sub.add_parser("url", help="Watch a URL-based MCP server")
+    watch_url.add_argument("url", type=ArgparseValidation.url)
+    watch_url.add_argument("--header", "-H", action="append", default=[], metavar="K:V")
+    watch_url.add_argument("--proxy", default=None)
+    watch_url.add_argument(
+        "--check-rugpull",
+        action="store_true",
+        help="Also compare against a registered rug-pull baseline each interval",
+    )
+
+    watch_config = watch_sub.add_parser("config", help="Watch all MCP servers in a config file")
+    watch_config.add_argument("path", type=ArgparseValidation.file)
+
+    for sub in (watch_url, watch_config):
+        sub.add_argument(
+            "--interval",
+            type=int,
+            default=300,
+            help="Seconds between checks (default 300)",
+        )
+        sub.add_argument(
+            "--webhook",
+            default=None,
+            metavar="URL",
+            help="POST newly-observed findings to this webhook URL as JSON",
+        )
+
     # --- source-scan ---
     src_parser = subparsers.add_parser(
         "source-scan", help="Scan MCP server source code for shell-injection (Prompt-In-Shell-Out)"
@@ -399,6 +440,8 @@ def main() -> None:
             _handle_attack(args)
         elif args.command == "behavior":
             _handle_behavior(args, scanner, config)
+        elif args.command == "watch":
+            _handle_watch(args, scanner)
         elif args.command == "explain":
             _handle_explain(args)
         elif args.command == "source-scan":
@@ -413,10 +456,34 @@ def main() -> None:
         sys.exit(1)
 
 
+def _apply_llm_judge(results: dict[str, ScanResult], enabled: bool) -> None:
+    """Optionally judge each result's tools/resources/prompts/instructions with an LLM.
+
+    No-op unless the caller opted in via --llm-judge; never runs by default.
+    """
+    if not enabled:
+        return
+    from .auditor.analyzers.llm_judge import LLMJudgeAnalyzer
+
+    judge = LLMJudgeAnalyzer()
+    for result in results.values():
+        result.findings.extend(judge.analyze(result.tools, kind="tool"))
+        result.findings.extend(judge.analyze(result.resources, kind="resource"))
+        result.findings.extend(judge.analyze(result.prompts, kind="prompt"))
+        if result.instructions:
+            result.findings.extend(
+                judge.analyze(
+                    [{"name": "server_instructions", "description": result.instructions}],
+                    kind="instructions",
+                )
+            )
+
+
 def _handle_scan(args, scanner: MCPScanner, config, metrics_collector: MetricsCollector) -> None:
     start = time.time()
     try:
         results = _run_scan(args, scanner)
+        _apply_llm_judge(results, getattr(args, "llm_judge", False))
         severity = args.severity or config.min_severity
         results = _filter_results(results, severity)
         results = _apply_triage(results, args)
@@ -732,6 +799,37 @@ def _handle_check(args, scanner: MCPScanner) -> None:
     else:
         raise ValidationError("Specify 'url' or 'stdio'")
     _print_rugpull_findings(findings)
+
+
+def _handle_watch(args, scanner: MCPScanner) -> None:
+    from .watch import WatchDaemon
+
+    if args.watch_type == "url":
+
+        def scan_once():
+            result = scanner.scan_server_url(
+                args.url,
+                check_rugpull=getattr(args, "check_rugpull", False),
+                extra_headers=_parse_headers(getattr(args, "header", [])),
+                proxy=getattr(args, "proxy", None),
+            )
+            return {args.url: result}
+
+        target = args.url
+    elif args.watch_type == "config":
+
+        def scan_once():
+            return scanner.scan_config_file(args.path)
+
+        target = args.path
+    else:
+        raise ValidationError("Specify 'url' or 'config'")
+
+    daemon = WatchDaemon(webhook_url=args.webhook, interval=args.interval)
+    alert_note = f"alerting to {args.webhook}" if args.webhook else "no --webhook set, logging only"
+    print(f"[*] Watching {target} every {args.interval}s ({alert_note}). Ctrl+C to stop.")
+    daemon.run(scan_once)
+    print("[*] Watch stopped.")
 
 
 def _handle_generate(args) -> None:

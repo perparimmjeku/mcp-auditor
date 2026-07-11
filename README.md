@@ -24,9 +24,14 @@ The project also includes authorized offensive tooling for penetration testers a
 |---|---|
 | Static Signatures | 40+ patterns such as "ignore security", "always use this tool", "send full conversation", and "authoritative source" |
 | Heuristic Analysis | Imperative language scoring, authority spoofing, Unicode hidden characters, and excessive agency claims |
+| Multi-Surface Scanning | The same signature/heuristic engine also runs on `resources`, `prompts`, and the server's `initialize` `instructions` string — not just tool descriptions |
 | Schema Anomaly Detection | Full-Schema Poisoning (FSP), sidenote parameter injection, enum injection, poisoned defaults, and required-array abuse |
-| Rug-Pull Detection | SHA-256 schema fingerprinting to detect unexpected tool definition changes |
+| Cross-Tool Composition Risk | Flags a server exposing both a sensitive-data-access tool and an egress-capable tool — individually benign, chainable into exfiltration |
+| Rug-Pull Detection | HMAC-signed SHA-256 schema fingerprinting; `check` detects both unexpected tool changes *and* tampered baseline files |
 | Behavioral / ATPA Detection | Calls tools and inspects responses for the benign→malicious time-bomb signature, output injection, and exfil instructions |
+| LLM Semantic Judge (opt-in) | `--llm-judge` sends descriptions to Claude to catch paraphrased poisoning that dodges static signatures |
+| OAuth 2.1 Detection | Reports MCP 2025-06-18 OAuth-protected servers clearly (401 + `WWW-Authenticate`) instead of a generic error |
+| Continuous Monitoring | `watch` re-scans on an interval and alerts a webhook on newly-observed findings |
 | OWASP Mapping | Labels findings across the OWASP MCP Top 10 (active detection for MCP01, MCP02, MCP03, MCP05) |
 
 ### Offensive Tooling
@@ -89,11 +94,36 @@ mcp-tool-auditor scan config \
 mcp-tool-auditor register url http://localhost:8080/mcp
 ```
 
+Baselines are HMAC-SHA256 signed, so `check` can tell a legitimate tool change from a
+tampered/forged baseline file (`RUGPULL_BASELINE_TAMPERED`). By default the signing key is
+a local file (`~/.mcp-tool-auditor/fingerprints/.hmac_key`); for CI use, supply your own
+out-of-band key so the key and the baseline file don't share a trust boundary:
+
+```bash
+export MCP_TOOL_AUDITOR_BASELINE_KEY="$(openssl rand -hex 32)"   # store in your CI secrets
+```
+
 ### Check for Rug-Pull Changes
 
 ```bash
 mcp-tool-auditor check url http://localhost:8080/mcp
 ```
+
+### Continuous Monitoring
+
+Point-in-time scans miss drift that happens between runs. `watch` re-scans on an interval
+and POSTs newly-observed findings to a webhook (Slack/Discord/PagerDuty/anything with a
+webhook endpoint):
+
+```bash
+mcp-tool-auditor watch url http://localhost:8080/mcp \
+  --interval 300 \
+  --check-rugpull \
+  --webhook https://hooks.example.com/services/T000/B000/XXXX
+```
+
+Each finding is alerted once (in-memory dedup for the process's lifetime), so a standing
+issue doesn't repeat-alert every interval.
 
 ### Behavioral / ATPA Detection
 
@@ -127,7 +157,28 @@ mcp-tool-auditor scan url https://target/mcp \
 
 Findings carry a **confidence** level (HIGH/MEDIUM/LOW); `--min-confidence` filters
 noisy heuristics and `--suppressions <file>` silences accepted false positives.
-URL transport speaks full MCP Streamable HTTP (session id + protocol-version headers).
+URL transport speaks full MCP Streamable HTTP (session id + protocol-version headers) at
+protocol version `2025-06-18`. If the server requires OAuth 2.1, the scan reports a clear
+`OAUTH_REQUIRED` finding (with protected-resource metadata, if discoverable) instead of a
+generic HTTP error — complete the OAuth flow yourself and pass the resulting bearer token
+via `--header`; this tool does not perform interactive OAuth login.
+
+### LLM Semantic Judge (opt-in)
+
+Static signatures and heuristics match fixed phrases; an attacker can dodge them by
+rephrasing the same intent differently. `--llm-judge` sends tool/resource/prompt text to
+Claude and asks it to judge intent instead of pattern-match text:
+
+```bash
+pip install 'mcp-tool-auditor[llm]'
+export ANTHROPIC_API_KEY="sk-ant-..."
+mcp-tool-auditor scan url http://localhost:8080/mcp --llm-judge
+```
+
+This is opt-in only and never runs by default — it sends third-party server content to
+Anthropic's API, which is a data-handling decision the operator must make explicitly.
+Flagged items get the `LLM_SEMANTIC_POISONING` rule (MEDIUM confidence; review the exact
+wording before rejecting a tool on this alone).
 
 ### Auto-Discover and Scan Local MCP Configs
 
@@ -242,7 +293,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 61 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 68 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -253,7 +304,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 | OWASP ID | Issue | Detection |
 |---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | `ST_IGNORE_PREVIOUS`, `ST_BYPASS`, `ST_IGNORE_SECURITY` |
-| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, credential-related signatures |
+| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, credential-related signatures |
 | MCP03 | Tool Poisoning | Signatures, heuristics, FSP, rug-pull/shadowing, and behavioral/ATPA detection |
 | MCP05 | Command Injection & Execution | `ST_EXECUTE`, `ST_CODE_EXEC`, command-related schema findings |
 
@@ -292,6 +343,7 @@ mcp-tool-auditor/
 │   ├── metrics.py
 │   ├── security.py
 │   ├── validation.py
+│   ├── watch.py
 │   ├── auditor/
 │   │   ├── __init__.py
 │   │   ├── scanner.py
@@ -305,6 +357,9 @@ mcp-tool-auditor/
 │   │   │   ├── schema.py
 │   │   │   ├── rugpull.py
 │   │   │   ├── behavioral.py
+│   │   │   ├── composition.py
+│   │   │   ├── llm_judge.py
+│   │   │   ├── surface.py
 │   │   │   └── patterns.py
 │   │   ├── signatures/
 │   │   │   ├── __init__.py
@@ -401,7 +456,7 @@ The authors assume no liability for misuse, unauthorized testing, or damages cau
 ```python
 """MCP Tool Auditor package."""
 
-__version__ = "1.0.0"
+__version__ = "1.3.0"
 __author__ = "Përparim Mjeku"
 __license__ = "MIT"
 ```

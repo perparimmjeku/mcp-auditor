@@ -3,6 +3,7 @@ from typing import Any
 
 from ..models import Finding, Severity
 from . import patterns
+from .surface import label_for_kind, rule_for_kind
 
 
 class HeuristicAnalyzer:
@@ -37,9 +38,15 @@ class HeuristicAnalyzer:
             config, "authority_count_threshold", self.AUTHORITY_COUNT_THRESHOLD
         )
 
-    def score_tool(self, tool: dict[str, Any]) -> list[Finding]:
+    def score_tool(self, tool: dict[str, Any], kind: str = "tool") -> list[Finding]:
+        """Score a tool/resource/prompt/instructions definition for poisoning heuristics.
+
+        `kind` selects which MCP surface `tool` represents; it only changes
+        finding labeling, not the scoring itself.
+        """
         findings: list[Finding] = []
         tool_name = tool.get("name", "unknown")
+        label = label_for_kind(kind)
         text = f"{tool.get('name', '')} {tool.get('title', '')} " f"{tool.get('description', '')}"
 
         # --- Description length heuristic ---
@@ -48,8 +55,8 @@ class HeuristicAnalyzer:
             findings.append(
                 Finding(
                     severity=Severity.MEDIUM,
-                    rule="HEUR_DESC_LENGTH",
-                    message=f"Tool '{tool_name}': Description is very long ({len(desc)} chars) — may contain embedded instructions.",
+                    rule=rule_for_kind("HEUR_DESC_LENGTH", kind),
+                    message=f"{label} '{tool_name}': Description is very long ({len(desc)} chars) — may contain embedded instructions.",
                     owasp_id="MCP03",
                     attack_type="tool_poisoning",
                     tool_name=tool_name,
@@ -65,8 +72,8 @@ class HeuristicAnalyzer:
                 findings.append(
                     Finding(
                         severity=Severity.HIGH,
-                        rule="HEUR_UNICODE_HIDDEN",
-                        message=f"Tool '{tool_name}': Unicode invisible characters in '{field_name}': {codepoints} — possible hidden instructions.",
+                        rule=rule_for_kind("HEUR_UNICODE_HIDDEN", kind),
+                        message=f"{label} '{tool_name}': Unicode invisible characters in '{field_name}': {codepoints} — possible hidden instructions.",
                         owasp_id="MCP03",
                         attack_type="stealth",
                         tool_name=tool_name,
@@ -82,8 +89,8 @@ class HeuristicAnalyzer:
             findings.append(
                 Finding(
                     severity=Severity.MEDIUM,
-                    rule="HEUR_IMPERATIVE",
-                    message=f"Tool '{tool_name}': {imperative_count} imperative/directive patterns — tool description issues commands to the agent.",
+                    rule=rule_for_kind("HEUR_IMPERATIVE", kind),
+                    message=f"{label} '{tool_name}': {imperative_count} imperative/directive patterns — description issues commands to the agent.",
                     owasp_id="MCP03",
                     attack_type="tool_poisoning",
                     tool_name=tool_name,
@@ -98,8 +105,8 @@ class HeuristicAnalyzer:
             findings.append(
                 Finding(
                     severity=Severity.MEDIUM,
-                    rule="HEUR_AGENCY",
-                    message=f"Tool '{tool_name}': {agency_count} agency/action patterns — may request broad capabilities.",
+                    rule=rule_for_kind("HEUR_AGENCY", kind),
+                    message=f"{label} '{tool_name}': {agency_count} agency/action patterns — may request broad capabilities.",
                     owasp_id="MCP02",
                     attack_type="excessive_agency",
                     tool_name=tool_name,
@@ -114,15 +121,15 @@ class HeuristicAnalyzer:
             findings.append(
                 Finding(
                     severity=Severity.HIGH,
-                    rule="HEUR_AUTHORITY_SPOOF",
-                    message=f"Tool '{tool_name}': {auth_count} authority-claim patterns — tool may be spoofing system-level authority.",
+                    rule=rule_for_kind("HEUR_AUTHORITY_SPOOF", kind),
+                    message=f"{label} '{tool_name}': {auth_count} authority-claim patterns — may be spoofing system-level authority.",
                     owasp_id="MCP03",
                     attack_type="authority_spoofing",
                     tool_name=tool_name,
                 )
             )
 
-        # --- Parameter heuristic analysis ---
+        # --- Parameter heuristic analysis (tools only; resources/prompts have no inputSchema) ---
         schema = tool.get("inputSchema", {})
         properties = schema.get("properties", {})
 
@@ -133,8 +140,8 @@ class HeuristicAnalyzer:
                 findings.append(
                     Finding(
                         severity=Severity.MEDIUM,
-                        rule="HEUR_PARAM_DESC_LONG",
-                        message=f"Tool '{tool_name}': Parameter '{param_name}' description is very long ({len(param_desc)} chars) — possible embedded instructions.",
+                        rule=rule_for_kind("HEUR_PARAM_DESC_LONG", kind),
+                        message=f"{label} '{tool_name}': Parameter '{param_name}' description is very long ({len(param_desc)} chars) — possible embedded instructions.",
                         owasp_id="MCP03",
                         attack_type="full_schema_poisoning",
                         tool_name=tool_name,

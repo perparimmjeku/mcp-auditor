@@ -9,6 +9,7 @@ except ImportError:  # pragma: no cover - exercised in minimal local installs
     yaml = None  # type: ignore[assignment]
 
 from ..models import Finding, Severity
+from .surface import label_for_kind, rule_for_kind
 
 
 class StaticAnalyzer:
@@ -26,15 +27,21 @@ class StaticAnalyzer:
         self._builtin = self._load_builtin_signatures()
         self._custom = custom_signatures or []
 
-    def analyze(self, tool: dict[str, Any]) -> list[Finding]:
-        """Run static analysis on a single tool definition."""
+    def analyze(self, tool: dict[str, Any], kind: str = "tool") -> list[Finding]:
+        """Run static analysis on a single tool/resource/prompt/instructions definition.
+
+        `kind` selects which MCP surface `tool` represents ("tool", "resource",
+        "prompt", or "instructions"); it only affects finding labeling, not
+        detection — the same signatures apply everywhere text can hide an
+        injection payload.
+        """
         findings: list[Finding] = []
         tool_name = tool.get("name", "unknown")
         text = self._get_text(tool)
 
         for signature in self._builtin:
             if self._matches(signature["pattern"], text):
-                findings.append(self._finding_from_signature(signature, tool_name))
+                findings.append(self._finding_from_signature(signature, tool_name, kind))
 
         # Custom signatures
         for cs in self._custom:
@@ -48,8 +55,8 @@ class StaticAnalyzer:
                 findings.append(
                     Finding(
                         severity=severity,
-                        rule=f"CUSTOM_{rule}",
-                        message=f"Tool '{tool_name}': {msg}",
+                        rule=rule_for_kind(f"CUSTOM_{rule}", kind),
+                        message=f"{label_for_kind(kind)} '{tool_name}': {msg}",
                         owasp_id=owasp,
                         attack_type=atype,
                         tool_name=tool_name,
@@ -58,11 +65,14 @@ class StaticAnalyzer:
 
         return findings
 
-    def _finding_from_signature(self, signature: dict[str, Any], tool_name: str) -> Finding:
+    def _finding_from_signature(
+        self, signature: dict[str, Any], tool_name: str, kind: str
+    ) -> Finding:
         return Finding(
             severity=signature["severity"],
-            rule=signature.get("rule", "STATIC_SIGNATURE"),
-            message=f"Tool '{tool_name}': {signature.get('message', 'Signature match')}",
+            rule=rule_for_kind(signature.get("rule", "STATIC_SIGNATURE"), kind),
+            message=f"{label_for_kind(kind)} '{tool_name}': "
+            f"{signature.get('message', 'Signature match')}",
             owasp_id=signature.get("owasp_id", "MCP03"),
             attack_type=signature.get("attack_type", "tool_poisoning"),
             tool_name=tool_name,

@@ -77,6 +77,12 @@ class ScanResult:
     findings: list[Finding]
     server_url: str | None = None
     tools: list[dict[str, Any]] = field(default_factory=list)
+    resources_scanned: int = 0
+    prompts_scanned: int = 0
+    resources: list[dict[str, Any]] = field(default_factory=list)
+    prompts: list[dict[str, Any]] = field(default_factory=list)
+    instructions: str | None = None
+    oauth_required: bool = False
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
@@ -101,5 +107,11 @@ class ScanResult:
             ],
             server_url=self.server_url,
             tools=self.tools,
+            resources_scanned=self.resources_scanned,
+            prompts_scanned=self.prompts_scanned,
+            resources=self.resources,
+            prompts=self.prompts,
+            instructions=self.instructions,
+            oauth_required=self.oauth_required,
             timestamp=self.timestamp,
         )

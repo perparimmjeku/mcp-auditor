@@ -1,7 +1,9 @@
 import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 from typing import Any
 
 from ..models import Finding, Severity
@@ -10,9 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 class RugPullDetector:
-    """Detects MCP rug-pull attacks by comparing tool schema fingerprints."""
+    """Detects MCP rug-pull attacks by comparing tool schema fingerprints.
+
+    Baselines are HMAC-SHA256 signed so `check()` can tell a legitimate
+    change from a tampered/forged baseline file — plain JSON on disk is
+    only as trustworthy as whoever can write to the fingerprint directory.
+    The signing key is auto-generated locally by default (protects against
+    accidental corruption and less-privileged tampering), or can be supplied
+    out-of-band via MCP_TOOL_AUDITOR_BASELINE_KEY (e.g. a CI secret) so the
+    baseline file and the key don't have to share a trust boundary.
+    """
 
     FINGERPRINT_DIR = os.path.expanduser("~/.mcp-tool-auditor/fingerprints/")
+    KEY_FILENAME = ".hmac_key"
+    KEY_ENV_VAR = "MCP_TOOL_AUDITOR_BASELINE_KEY"
 
     def __init__(self, fingerprint_dir: str | None = None):
         self._fp_dir = fingerprint_dir or self.FINGERPRINT_DIR
@@ -40,19 +53,48 @@ class RugPullDetector:
         normalized = deep_sort(normalized)
         return hashlib.sha256(json.dumps(normalized, separators=(",", ":")).encode()).hexdigest()
 
+    def _load_or_create_key(self) -> bytes:
+        """Return the HMAC signing key: env override, else a local key file."""
+        env_key = os.environ.get(self.KEY_ENV_VAR)
+        if env_key:
+            return env_key.encode("utf-8")
+
+        os.makedirs(self._fp_dir, exist_ok=True)
+        key_path = os.path.join(self._fp_dir, self.KEY_FILENAME)
+        if os.path.exists(key_path):
+            with open(key_path, "rb") as f:
+                return f.read()
+
+        key = secrets.token_bytes(32)
+        try:
+            fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(key)
+        except FileExistsError:
+            # Another process created it first (e.g. concurrent registers).
+            with open(key_path, "rb") as f:
+                key = f.read()
+        return key
+
+    def _sign(self, registry: dict[str, str]) -> str:
+        key = self._load_or_create_key()
+        payload = json.dumps(registry, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hmac.new(key, payload, hashlib.sha256).hexdigest()
+
     def register(self, server_url: str, tools: list[dict[str, Any]]) -> str:
-        """Register current tool fingerprints as the approved baseline."""
+        """Register current tool fingerprints as the approved, signed baseline."""
         registry: dict[str, str] = {}
         for tool in tools:
             registry[tool.get("name", "unknown")] = self._fingerprint_tool(tool)
 
         os.makedirs(self._fp_dir, exist_ok=True)
         fp_path = os.path.join(self._fp_dir, f"{self._server_id(server_url)}.json")
+        document = {"tools": registry, "hmac": self._sign(registry)}
 
         temp_path = f"{fp_path}.tmp"
         try:
             with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(registry, f, indent=2, sort_keys=True)
+                json.dump(document, f, indent=2, sort_keys=True)
             os.replace(temp_path, fp_path)
         except OSError:
             if os.path.exists(temp_path):
@@ -81,7 +123,7 @@ class RugPullDetector:
 
         try:
             with open(fp_path, encoding="utf-8") as f:
-                baseline: dict[str, str] = json.load(f)
+                document = json.load(f)
         except json.JSONDecodeError as e:
             raise RuntimeError(
                 f"Corrupted baseline fingerprint at {fp_path}: {e}. "
@@ -89,6 +131,13 @@ class RugPullDetector:
             ) from e
         except OSError as e:
             raise RuntimeError(f"Cannot read baseline fingerprint at {fp_path}: {e}") from e
+
+        baseline, verify_findings = self._verify_and_unwrap(document, server_url)
+        findings.extend(verify_findings)
+        if baseline is None:
+            # Signature didn't verify — the file isn't trustworthy as a
+            # comparison point, so don't reason about what "changed".
+            return findings
 
         current_fps = {t.get("name", "unknown"): self._fingerprint_tool(t) for t in tools}
 
@@ -134,15 +183,69 @@ class RugPullDetector:
 
         return findings
 
+    def _verify_and_unwrap(
+        self, document: Any, server_url: str
+    ) -> tuple[dict[str, str] | None, list[Finding]]:
+        """Validate a loaded baseline's HMAC signature and return its tool map.
+
+        Returns (None, [CRITICAL finding]) if a signed baseline's signature
+        doesn't verify — the caller must not use it as a comparison point.
+        Baselines from before signing was added (a flat {name: fingerprint}
+        dict, no "tools"/"hmac" wrapper) are accepted with a lower-severity
+        nudge to re-register, so upgrading doesn't break existing baselines.
+        """
+        if not isinstance(document, dict):
+            return None, [
+                Finding(
+                    severity=Severity.CRITICAL,
+                    rule="RUGPULL_BASELINE_TAMPERED",
+                    message=f"Server '{server_url}': Baseline file is not a valid document — "
+                    "refusing to trust it. Re-register after confirming current tools are legitimate.",
+                    owasp_id="MCP03",
+                    attack_type="rug_pull",
+                )
+            ]
+
+        if "tools" not in document and "hmac" not in document:
+            return document, [
+                Finding(
+                    severity=Severity.MEDIUM,
+                    rule="RUGPULL_BASELINE_UNSIGNED",
+                    message=f"Server '{server_url}': Baseline predates integrity signing — "
+                    "run 'mcp-tool-auditor register' to protect it against tampering.",
+                    owasp_id="MCP03",
+                    attack_type="rug_pull",
+                )
+            ]
+
+        baseline = document.get("tools", {})
+        signature = document.get("hmac", "")
+        expected = self._sign(baseline)
+        if not signature or not hmac.compare_digest(signature, expected):
+            return None, [
+                Finding(
+                    severity=Severity.CRITICAL,
+                    rule="RUGPULL_BASELINE_TAMPERED",
+                    message=f"Server '{server_url}': Baseline signature does not verify — the "
+                    "file may have been edited or replaced outside mcp-tool-auditor. Refusing to "
+                    "trust it; re-register after confirming current tools are legitimate.",
+                    owasp_id="MCP03",
+                    attack_type="rug_pull",
+                )
+            ]
+        return baseline, []
+
     def list_registrations(self) -> dict[str, str]:
         """List all registered server baselines."""
         registrations: dict[str, str] = {}
         if not os.path.isdir(self._fp_dir):
             return registrations
         for fname in os.listdir(self._fp_dir):
-            if fname.endswith(".json"):
-                fpath = os.path.join(self._fp_dir, fname)
-                with open(fpath) as f:
-                    data = json.load(f)
-                registrations[fname.replace(".json", "")] = f"{len(data)} tools | {fpath}"
+            if fname == self.KEY_FILENAME or not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(self._fp_dir, fname)
+            with open(fpath) as f:
+                data = json.load(f)
+            tool_map = data.get("tools", data) if isinstance(data, dict) else {}
+            registrations[fname.replace(".json", "")] = f"{len(tool_map)} tools | {fpath}"
         return registrations

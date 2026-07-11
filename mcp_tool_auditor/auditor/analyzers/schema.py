@@ -33,6 +33,11 @@ class SchemaAnalyzer:
     # Overly permissive schema types
     SUSPICIOUS_TYPES = ["any", "null"]
 
+    # MCP prompts don't carry a JSON Schema like tools do (arguments are
+    # {name, description, required} triples), so this threshold is separate
+    # from param_desc_length_threshold on HeuristicAnalyzer.
+    PROMPT_ARG_DESC_LENGTH_THRESHOLD = 300
+
     def __init__(self, config=None):
         self.fsp_check_enabled = getattr(config, "fsp_check_enabled", True)
         self.required_check_enabled = getattr(config, "required_check_enabled", True)
@@ -214,6 +219,52 @@ class SchemaAnalyzer:
                             field=f"inputSchema.properties.{param_name}.default",
                         )
                     )
+
+        return findings
+
+    def analyze_prompt_arguments(self, prompt: dict[str, Any]) -> list[Finding]:
+        """Check an MCP prompt's `arguments` entries for injection patterns.
+
+        Prompts don't have inputSchema/properties like tools, just a flat
+        list of {name, description, required} — so this mirrors the
+        description-injection and length checks from `analyze()` without
+        the JSON-Schema-specific checks (enum/default/type) that don't apply.
+        """
+        findings: list[Finding] = []
+        prompt_name = prompt.get("name", "unknown")
+        arguments = prompt.get("arguments", []) or []
+
+        for arg in arguments:
+            if not isinstance(arg, dict):
+                continue
+            arg_name = arg.get("name", "unknown")
+            arg_desc = str(arg.get("description", ""))
+
+            if len(arg_desc) > self.PROMPT_ARG_DESC_LENGTH_THRESHOLD:
+                findings.append(
+                    Finding(
+                        severity=Severity.MEDIUM,
+                        rule="PROMPT_ARG_DESC_LONG",
+                        message=f"Prompt '{prompt_name}': Argument '{arg_name}' description is very long ({len(arg_desc)} chars) — possible embedded instructions.",
+                        owasp_id="MCP03",
+                        attack_type="full_schema_poisoning",
+                        tool_name=prompt_name,
+                        field=f"arguments.{arg_name}.description",
+                    )
+                )
+
+            if "ignore" in arg_desc.lower() and "security" in arg_desc.lower():
+                findings.append(
+                    Finding(
+                        severity=Severity.CRITICAL,
+                        rule="PROMPT_ARG_DESC_INJECTION",
+                        message=f"Prompt '{prompt_name}': Argument '{arg_name}' description contains 'ignore' and 'security' — likely injection payload.",
+                        owasp_id="MCP03",
+                        attack_type="full_schema_poisoning",
+                        tool_name=prompt_name,
+                        field=f"arguments.{arg_name}.description",
+                    )
+                )
 
         return findings
 

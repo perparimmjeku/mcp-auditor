@@ -35,10 +35,28 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "subprocess.run([...]) or execFile), and validate/allowlist the input.",
     ),
     (
+        "RUGPULL_BASELINE_TAMPERED",
+        "The registered baseline's signature does not verify — it may have been edited or "
+        "replaced outside the tool. Do not trust it as a comparison point; delete it and "
+        "re-register only after confirming the server's current tools are legitimate.",
+    ),
+    (
+        "RUGPULL_BASELINE_UNSIGNED",
+        "This baseline predates HMAC integrity signing, so tampering with the file on disk "
+        "wouldn't be detected. Run 'mcp-tool-auditor register' again to upgrade it to a signed "
+        "baseline.",
+    ),
+    (
         "RUGPULL",
         "Tool definitions changed since the registered baseline. Re-review the server, then "
         "re-register the baseline only after confirming the change is legitimate "
         "(mcp-tool-auditor register).",
+    ),
+    (
+        "PROMPT_ARG_DESC_INJECTION",
+        "A prompt argument description contains 'ignore' and 'security' — likely an injection "
+        "payload smuggled through a prompt template rather than a tool schema. Reject the prompt "
+        "and report it to the server author.",
     ),
     (
         "FSP",
@@ -50,6 +68,19 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "SCHEMA",
         "The parameter schema is overly permissive or untyped. Require explicit, constrained types "
         "so the agent cannot be coerced into passing arbitrary values.",
+    ),
+    (
+        "LLM_SEMANTIC_POISONING",
+        "An LLM judge flagged this description as manipulative toward an AI agent even though "
+        "it didn't match static signatures. Treat as MEDIUM-confidence: manually review the "
+        "exact wording before rejecting the tool, since semantic judgments can false-positive.",
+    ),
+    (
+        "COMPOSITION_CONFUSED_DEPUTY",
+        "Individually-benign tools combine into a confused-deputy chain (one reads secrets, "
+        "another sends data out). Isolate high-privilege/data-access tools from egress-capable "
+        "tools in separate agent sessions, or require explicit user confirmation before an "
+        "egress tool runs in a session that also has a sensitive-data tool available.",
     ),
     (
         "HEUR_UNICODE",
@@ -85,11 +116,26 @@ _OWASP_FALLBACK: dict[str, str] = {
 }
 
 
+# Resource/prompt/instructions findings reuse tool rule ids with a surface
+# prefix (see analyzers/surface.py) — strip it so e.g. "RES_ST_IGNORE_PREVIOUS"
+# matches the same family as "ST_IGNORE_PREVIOUS".
+_KIND_PREFIXES = ("RES_", "PROMPT_", "INSTR_")
+
+
 def get_remediation(rule: str, owasp_id: str | None = None, attack_type: str | None = None) -> str:
     """Return remediation guidance for a finding rule."""
     for prefix, text in _PREFIX_REMEDIATION:
         if rule.startswith(prefix):
             return text
+
+    for kind_prefix in _KIND_PREFIXES:
+        if rule.startswith(kind_prefix):
+            bare = rule[len(kind_prefix) :]
+            for prefix, text in _PREFIX_REMEDIATION:
+                if bare.startswith(prefix):
+                    return text
+            break
+
     if owasp_id and owasp_id in _OWASP_FALLBACK:
         return _OWASP_FALLBACK[owasp_id]
     return DEFAULT_REMEDIATION
