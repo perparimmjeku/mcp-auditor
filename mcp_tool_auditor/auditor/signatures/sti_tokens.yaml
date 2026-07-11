@@ -1,0 +1,92 @@
+# Special Token Injection (STI) registry.
+#
+# Chat-template control tokens that spoof or close a model's native
+# conversation-turn boundary. Text carrying these (in tool/resource/prompt
+# definitions, server instructions, or tool call *output*) can hijack the
+# role structure of whatever prompt the MCP client eventually builds, even
+# though it reads as inert text to a human reviewer.
+#
+# Grouped by model family. One entry per literal token:
+#   token: the exact string as the model's tokenizer recognizes it
+#   note:  what it means / who uses it
+#
+# To extend: add an entry under the right family (or a new family block).
+# `token` must be the literal, correctly-encoded string -- e.g. DeepSeek's
+# tokens genuinely use the fullwidth vertical line U+FF5C, not ASCII '|';
+# that's not an "obfuscation" to fold, it's how the vocabulary is spelled.
+
+chatml_openai_qwen:
+  - token: "<|im_start|>"
+    note: "ChatML turn start (OpenAI, Qwen, and many ChatML-derived models)"
+  - token: "<|im_end|>"
+    note: "ChatML turn end"
+  - token: "<|endoftext|>"
+    note: "GPT-2/3-style document boundary token"
+
+llama2_mistral:
+  - token: "[INST]"
+    note: "Llama 2 / Mistral instruction-block start"
+  - token: "[/INST]"
+    note: "Llama 2 / Mistral instruction-block end"
+  - token: "<<SYS>>"
+    note: "Llama 2 system-prompt block start"
+  - token: "<</SYS>>"
+    note: "Llama 2 system-prompt block end"
+  - token: "<s>"
+    note: "Llama 2 / Mistral beginning-of-sequence"
+  - token: "</s>"
+    note: "Llama 2 / Mistral end-of-sequence"
+
+llama3:
+  - token: "<|begin_of_text|>"
+    note: "Llama 3 document start"
+  - token: "<|start_header_id|>"
+    note: "Llama 3 role-header start (e.g. wraps 'system'/'user'/'assistant')"
+  - token: "<|end_header_id|>"
+    note: "Llama 3 role-header end"
+  - token: "<|eot_id|>"
+    note: "Llama 3 end-of-turn"
+
+gemma:
+  - token: "<start_of_turn>"
+    note: "Gemma conversation-turn start"
+  - token: "<end_of_turn>"
+    note: "Gemma conversation-turn end"
+
+phi:
+  - token: "<|system|>"
+    note: "Phi system role marker"
+  - token: "<|user|>"
+    note: "Phi user role marker"
+  - token: "<|assistant|>"
+    note: "Phi assistant role marker"
+  - token: "<|end|>"
+    note: "Phi turn end"
+
+command_r:
+  - token: "<|START_OF_TURN_TOKEN|>"
+    note: "Cohere Command R turn start"
+  - token: "<|END_OF_TURN_TOKEN|>"
+    note: "Cohere Command R turn end"
+  - token: "<|SYSTEM_TOKEN|>"
+    note: "Cohere Command R system role"
+  - token: "<|USER_TOKEN|>"
+    note: "Cohere Command R user role"
+  - token: "<|CHATBOT_TOKEN|>"
+    note: "Cohere Command R assistant role"
+
+deepseek:
+  - token: "<｜User｜>"
+    note: "DeepSeek user turn (fullwidth U+FF5C vertical line, not ASCII '|')"
+  - token: "<｜Assistant｜>"
+    note: "DeepSeek assistant turn (fullwidth U+FF5C vertical line)"
+  - token: "<｜begin▁of▁sentence｜>"
+    note: "DeepSeek beginning-of-sequence (U+FF5C pipe, U+2581 lower one-eighth block as space)"
+  - token: "<｜end▁of▁sentence｜>"
+    note: "DeepSeek end-of-sequence"
+
+anthropic_legacy:
+  - token: "\n\nHuman:"
+    note: "Legacy Claude text-completion API turn marker"
+  - token: "\n\nAssistant:"
+    note: "Legacy Claude text-completion API turn marker"
