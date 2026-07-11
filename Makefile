@@ -17,7 +17,7 @@ install-dev:
 	pip install -e ".[dev]"
 
 test:
-	python -m pytest tests/ -v --cov=mcp_tool_auditor --cov-report=term-missing
+	python -m pytest tests/ -v --cov=mcp_tool_auditor --cov-report=term-missing --cov-fail-under=68
 
 lint:
 	ruff check mcp_tool_auditor tests

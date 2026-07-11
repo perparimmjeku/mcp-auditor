@@ -28,8 +28,12 @@ runs:
 
     - name: Install mcp-tool-auditor
       shell: bash
-      run: python -m pip install --upgrade "${{ inputs.install-spec }}"
+      env:
+        INSTALL_SPEC: ${{ inputs.install-spec }}
+      run: python -m pip install --upgrade "$INSTALL_SPEC"
 
     - name: Run mcp-tool-auditor
       shell: bash
-      run: mcp-tool-auditor ${{ inputs.command }}
+      env:
+        AUDIT_COMMAND: ${{ inputs.command }}
+      run: mcp-tool-auditor $AUDIT_COMMAND

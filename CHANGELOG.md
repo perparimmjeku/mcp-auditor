@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Coverage measurement blind spot** — CLI-invoking tests spawn `mcp_tool_auditor.cli`
+  in a subprocess, which coverage.py never traced; `cli.py`, `logging_config.py`, and
+  the reporters showed as 0-40% covered despite being exercised by real tests. Added
+  subprocess coverage tracking (`tests/conftest.py` + `sitecustomize.py` hook,
+  `parallel`/`relative_files` in `[tool.coverage.run]`); true coverage is 70%, not 50%.
+
+### Added
+- **CI coverage gate** (`--cov-fail-under=68`) so coverage can't silently regress.
+- **CodeQL analysis** (`.github/workflows/codeql.yml`) for Python static analysis on
+  push/PR/weekly schedule.
+- **Dependency vulnerability audit** (`pip-audit`) as a CI job.
+- **Dependabot** for pip and GitHub Actions dependency updates.
+- **`.dockerignore`** so the published image doesn't ship `.git`, tests, docs, and caches.
+
+### Changed
+- `ci.yml` now sets explicit least-privilege `permissions: contents: read`.
+- `action.yml` passes `install-spec`/`command` inputs through `env:` instead of
+  interpolating them directly into `run:`, closing a shell-injection footgun for
+  downstream workflows that source those inputs from untrusted values.
+- `.gitignore` now covers `.mypy_cache/`, `.ruff_cache/`, and parallel `.coverage.*` files.
+
 ## [1.2.0] - 2026-06-23
 
 ### Added

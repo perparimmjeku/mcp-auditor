@@ -83,6 +83,8 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["mcp_tool_auditor"]
 omit = ["*/tests/*"]
+parallel = true
+relative_files = true
 
 [tool.mypy]
 python_version = "3.10"
