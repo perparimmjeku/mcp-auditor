@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 
 from ..inventory import InventoryResult
-from ..models import Severity
+from ..models import SEVERITY_LEVELS, Finding, Severity
 
 _SEVERITY_COLOR = {
     Severity.CRITICAL: "#c62828",
@@ -48,8 +48,30 @@ def _node_id(name: str) -> str:
     return sanitized or "server"
 
 
-def _source_server_of(finding) -> str:
+def _source_server_of(finding: Finding) -> str:
     return (finding.field or "").removeprefix("source_server:")
+
+
+def _worst_finding_per_pair(findings: list[Finding]) -> list[Finding]:
+    """Collapse to one finding per (source_server, sink_server) pair, kept
+    graph-only -- flow.py's design deliberately emits BOTH a specific
+    coupled finding (CRITICAL/HIGH) and the generic aggregate (MEDIUM) for
+    the same pair when a chain is coupled, and the JSON/markdown report
+    keeps both (real data, don't drop it). But two parallel edges between
+    the same two nodes just doubles graph clutter without adding
+    information the single worse edge doesn't already convey -- the
+    graph's job is "show the one real chain, quietly," not enumerate every
+    finding. Ties keep whichever sorts first (stable, not meaningful).
+    """
+    best: dict[tuple[str, str], Finding] = {}
+    for finding in findings:
+        pair = (_source_server_of(finding), finding.related_server or "")
+        current = best.get(pair)
+        if current is None or SEVERITY_LEVELS.get(finding.severity, 99) < SEVERITY_LEVELS.get(
+            current.severity, 99
+        ):
+            best[pair] = finding
+    return list(best.values())
 
 
 def generate_mermaid(result: InventoryResult) -> str:
@@ -57,7 +79,8 @@ def generate_mermaid(result: InventoryResult) -> str:
     in ```mermaid for embedding, or write it verbatim to a standalone .mmd
     file). Every discovered server is a node, even one with no capability
     and no edges -- an isolated, unstyled node IS the "quiet/low-risk"
-    signal for that server, not something to omit.
+    signal for that server, not something to omit. At most one edge per
+    server pair -- see _worst_finding_per_pair.
     """
     lines = ["flowchart LR"]
     lines.append("    classDef confirmedNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;")
@@ -79,7 +102,8 @@ def generate_mermaid(result: InventoryResult) -> str:
     lines.append("")
 
     link_styles: list[str] = []
-    for finding in sorted(result.chain_findings, key=lambda f: (f.rule, f.tool_name or "")):
+    edge_findings = _worst_finding_per_pair(result.chain_findings)
+    for finding in sorted(edge_findings, key=lambda f: (f.rule, f.tool_name or "")):
         source_name = _source_server_of(finding)
         sink_name = finding.related_server or ""
         if source_name not in node_ids or sink_name not in node_ids:

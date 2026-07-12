@@ -70,6 +70,7 @@ def test_generate_mermaid_confirmed_critical_edge_is_solid_and_red():
         ),
     ]
     result = inventory.InventoryResult(servers=servers, chain_findings=findings)
+    assert len(findings) == 2  # sanity: both the specific and generic finding fire
     graph = generate_mermaid(result)
     assert "(possible)" not in graph
     assert "stroke-dasharray:0" in graph
@@ -80,6 +81,14 @@ def test_generate_mermaid_confirmed_critical_edge_is_solid_and_red():
     assert "class http_server confirmedNode" in graph
     assert "class fs_server inferredNode" not in graph
     assert "class http_server inferredNode" not in graph
+    # Graph-only collapse: the pair has both a CRITICAL and a MEDIUM finding,
+    # but only ONE edge should be drawn -- the worse one. The report/JSON
+    # still keeps both findings (see `findings` above, len == 2); this is
+    # purely about not doubling edge count in the visual.
+    assert graph.count("fs_server -->") == 1
+    assert "MEDIUM" not in graph  # the muted duplicate is suppressed here
+    linkstyle_lines = [line for line in graph.splitlines() if line.strip().startswith("linkStyle")]
+    assert len(linkstyle_lines) == 1
 
 
 def test_generate_mermaid_node_ids_are_sanitized():
