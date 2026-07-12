@@ -518,7 +518,7 @@ python ./test_servers/server_description_injection.py
 ## Architecture
 
 ```text
-mcp-tool-auditor/
+mcp-auditor/
 ├── mcp_tool_auditor/
 │   ├── __init__.py
 │   ├── cli.py
