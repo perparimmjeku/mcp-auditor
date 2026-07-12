@@ -12,11 +12,12 @@ import os
 import sys
 import time
 
-from .auditor import discovery, remediation, suppressions
+from .auditor import discovery, inventory, remediation, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
 from .auditor.analyzers.sti_tokenizer import parse_tokenizer_spec
 from .auditor.models import CROSS_SERVER_KEY, SEVERITY_LEVELS, Finding, ScanResult, Severity
+from .auditor.reporters.inventory_reporter import InventoryReporter
 from .auditor.reporters.json_reporter import JSONReporter
 from .auditor.reporters.markdown_reporter import MarkdownReporter
 from .auditor.reporters.pentest_reporter import PentestReporter
@@ -490,6 +491,42 @@ Examples:
         "--list", action="store_true", help="List rule families with specific guidance"
     )
 
+    # --- inventory ---
+    inv_parser = subparsers.add_parser(
+        "inventory",
+        help="Discover MCP servers and map cross-server blast radius (host risk report + graph)",
+    )
+    inv_parser.add_argument(
+        "--format",
+        choices=["json", "markdown", "sarif", "pentest"],
+        default=None,
+        help="Output format (default: config value or markdown). 'pentest' renders the same "
+        "host-risk report as 'markdown' -- inventory's identity/reach/blast-radius shape "
+        "doesn't fit the per-tool evidence format the other commands' 'pentest' uses. "
+        "'sarif' carries only the cross-server chain findings (FLOW_*/INV_INFERRED_CHAIN), "
+        "not identity/reach data -- SARIF has no natural field for that.",
+    )
+    inv_parser.add_argument("--output", "-o", help="Write output to file instead of stdout")
+    inv_parser.add_argument(
+        "--suppress", action="append", default=[], metavar="RULE", help="Suppress a chain rule"
+    )
+    inv_parser.add_argument(
+        "--suppressions", default=None, metavar="FILE", help="YAML/JSON suppressions file"
+    )
+    inv_parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="Also connect read-only to each discovered server and confirm its declared "
+        "capabilities against real tools/list data (enumeration only -- never calls a "
+        "tool). Off by default: static discovery alone already produces a useful, clearly "
+        "labeled INFERRED blast-radius map. Requires authorization (see --yes).",
+    )
+    inv_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Acknowledge the --probe authorization warning non-interactively",
+    )
+
     return parser
 
 
@@ -549,6 +586,8 @@ def main() -> None:
             _handle_explain(args)
         elif args.command == "source-scan":
             _handle_source_scan(args, config, engagement=engagement)
+        elif args.command == "inventory":
+            _handle_inventory(args, scanner, config, engagement=engagement)
         else:
             parser.print_help()
     except KeyboardInterrupt:
@@ -989,6 +1028,80 @@ def _handle_source_scan(args, config, engagement=None) -> None:
     else:
         print(output)
     _apply_fail_on(results, getattr(args, "fail_on", None))
+
+
+def _handle_inventory(args, scanner: MCPScanner, config, engagement=None) -> None:
+    """Discover MCP servers and map cross-server blast radius.
+
+    Layer 1+2 (static discovery + capability inference + INV_INFERRED_CHAIN
+    blast-radius) always run -- no execution, no network call, nothing to
+    gate. Layer 3 (--probe) is opt-in and gated exactly like `behavior`/
+    `attack`: the same authorization banner + require_ack(), and per-server
+    engagement scope enforcement happens inside run_inventory() itself.
+    Declining the ack (or --probe never being passed) falls back to the
+    static map cleanly rather than aborting -- inventory without --probe is
+    still a complete, useful command on its own.
+    """
+    configs = discovery.discover_configs()
+    discovered: list[discovery.DiscoveredServer] = []
+    for cfg in configs:
+        discovered.extend(discovery.parse_server_entries(cfg))
+
+    probe = False
+    if getattr(args, "probe", False):
+        print_security_warning()
+        try:
+            acked = require_ack(auto_ack=getattr(args, "yes", False))
+        except EOFError:
+            # No TTY to prompt against (e.g. --probe run non-interactively
+            # without --yes, common in CI) -- must fall back cleanly like
+            # any other declined/unauthorized case, not crash the command.
+            acked = False
+        if acked:
+            probe = True
+        else:
+            # Processing continues and still writes a report to stdout below
+            # (unlike behavior/attack, which exit immediately on decline) --
+            # this status line must go to stderr, or it corrupts a piped/
+            # redirected json/sarif report the same way the banner would.
+            print(
+                "[*] --probe declined -- falling back to static (Layer 1+2) inventory.",
+                file=sys.stderr,
+            )
+
+    result = inventory.run_inventory(
+        discovered, scanner=scanner, probe=probe, engagement=engagement
+    )
+
+    suppress_rules = getattr(args, "suppress", None) or []
+    suppress_file = getattr(args, "suppressions", None)
+    if suppress_rules or suppress_file:
+        entries = suppressions.load(suppress_file) if suppress_file else []
+        wrapped = {CROSS_SERVER_KEY: ScanResult(tools_scanned=0, findings=result.chain_findings)}
+        wrapped = suppressions.apply(wrapped, rules=suppress_rules, entries=entries)
+        result.chain_findings = wrapped[CROSS_SERVER_KEY].findings
+
+    output_format = args.format or config.output_format
+    if output_format == "json":
+        output = InventoryReporter.generate_json(result)
+    elif output_format == "sarif":
+        # SARIF carries only the chain findings -- identity/reach/blast-
+        # radius data has no natural SARIF field, same reasoning as the
+        # existing reporters staying finding-shaped.
+        wrapped = {CROSS_SERVER_KEY: ScanResult(tools_scanned=0, findings=result.chain_findings)}
+        output = SarifReporter.generate(wrapped)
+    else:
+        # "pentest" renders the same host-risk report as "markdown" here --
+        # inventory's identity/reach shape doesn't fit PentestReporter's
+        # per-tool evidence-lookup model.
+        output = InventoryReporter.generate_markdown(result)
+
+    if args.output:
+        output_path = validate_output_path(args.output)
+        output_path.write_text(output, encoding="utf-8")
+        print(f"[+] Report written to {output_path}")
+    else:
+        print(output)
 
 
 def _handle_explain(args) -> None:

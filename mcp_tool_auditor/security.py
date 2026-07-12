@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 AUTHORIZED_TESTING_BANNER = """
 ================================================================
@@ -36,14 +37,27 @@ after a configurable call threshold, to spoof/close a conversation turn.
 
 
 def print_security_warning(specific: str = "") -> None:
-    """Print an authorization warning."""
-    print(AUTHORIZED_TESTING_BANNER)
+    """Print an authorization warning to stderr.
+
+    Deliberately stderr, not stdout: a command's actual report (json/sarif/
+    markdown) goes to stdout, and this banner must never end up mixed into
+    it if that output is piped or redirected -- e.g. `inventory --probe
+    --format json | jq` must still get valid JSON on stdout regardless of
+    whether the warning printed.
+    """
+    print(AUTHORIZED_TESTING_BANNER, file=sys.stderr)
     if specific:
-        print(specific)
+        print(specific, file=sys.stderr)
 
 
 def require_ack(auto_ack: bool = False) -> bool:
-    """Require user acknowledgement unless an explicit bypass is provided."""
+    """Require user acknowledgement unless an explicit bypass is provided.
+
+    The prompt is written to stderr manually, then read with a bare
+    input() -- input(prompt) always writes its prompt to stdout, which
+    would otherwise land in the middle of a piped/redirected report the
+    same way print_security_warning's banner would.
+    """
     if auto_ack or os.environ.get("MCP_TOOL_AUDITOR_ASSUME_AUTHORIZED") in {
         "1",
         "true",
@@ -51,5 +65,10 @@ def require_ack(auto_ack: bool = False) -> bool:
     }:
         return True
 
-    response = input("Do you acknowledge you are authorized to run this simulation? [yes/no]: ")
+    print(
+        "Do you acknowledge you are authorized to run this simulation? [yes/no]: ",
+        end="",
+        file=sys.stderr,
+    )
+    response = input()
     return response.strip().lower() in {"yes", "y"}
