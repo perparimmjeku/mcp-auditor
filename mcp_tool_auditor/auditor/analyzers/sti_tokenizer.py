@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from importlib import resources
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,10 @@ class TokenizerRegistry:
     """
 
     def __init__(self) -> None:
-        self._cache: dict[str, ResolvedTokenizer | None] = {}
+        # Keyed by asset filename (not CLI alias) -- "chatml" and "qwen" share
+        # one file, so this avoids parsing the same ~11MB JSON twice while
+        # still letting each alias produce a correctly-named ResolvedTokenizer.
+        self._asset_cache: dict[str, tuple[Any, frozenset[int]] | None] = {}
 
     def resolve(self, names: list[str]) -> list[ResolvedTokenizer]:
         if not names:
@@ -122,4 +126,65 @@ class TokenizerRegistry:
         return self._load(name, tokenizers_lib)
 
     def _load(self, name: str, tokenizers_lib: Any) -> ResolvedTokenizer | None:
-        raise NotImplementedError  # filled in by the next commit
+        filename = _SUPPORTED_TOKENIZERS[name]
+        asset = self._load_asset(filename, tokenizers_lib)
+        if asset is None:
+            return None
+        tok, special_ids = asset
+        # Always build a fresh ResolvedTokenizer with the alias actually
+        # requested -- "chatml" and "qwen" share a cached asset, but a
+        # result labeled "chatml" when the caller asked for "qwen" would be
+        # a real (if minor) correctness bug in the finding's provenance.
+        return ResolvedTokenizer(name=name, tokenizer=tok, special_ids=special_ids)
+
+    def _load_asset(self, filename: str, tokenizers_lib: Any) -> tuple[Any, frozenset[int]] | None:
+        if filename in self._asset_cache:
+            return self._asset_cache[filename]
+
+        try:
+            json_text = (
+                resources.files("mcp_tool_auditor.auditor.tokenizer_assets")
+                .joinpath(filename)
+                .read_text(encoding="utf-8")
+            )
+            tok = tokenizers_lib.Tokenizer.from_str(json_text)
+        except Exception:
+            logger.warning(
+                "--sti-tokenizer: failed to load the vendored asset '%s'. Skipped.",
+                filename,
+                exc_info=True,
+            )
+            self._asset_cache[filename] = None
+            return None
+
+        # Every added/special-vocabulary token id, not just ones with the
+        # JSON's own "special": true flag -- e.g. DeepSeek's <｜User｜> is
+        # "special": false in its tokenizer.json but still gets a dedicated
+        # added-vocabulary id rather than being BPE-split, which is the
+        # actual property this tier cares about (a real tokenizer treats it
+        # as one atomic unit, not ordinary text).
+        special_ids = frozenset(tok.get_added_tokens_decoder().keys())
+        asset = (tok, special_ids)
+        self._asset_cache[filename] = asset
+        return asset
+
+
+def find_tokenizer_matches(text: str, resolved: ResolvedTokenizer) -> list[tuple[int, int, str]]:
+    """Return (start, end, substring) for every span of `text` that the
+
+    real tokenizer resolves to one of its added/special-vocabulary ids --
+    i.e. an atomic token, not several ordinary BPE pieces. Encodes the raw,
+    unmodified text (no normalization) so offsets line up with the exact/
+    structural string tiers, which also operate on the original text.
+    add_special_tokens=False only suppresses template tokens (e.g. BOS/EOS)
+    the tokenizer would otherwise add; it does not affect whether special
+    tokens embedded in the input text are recognized.
+    """
+    if not text:
+        return []
+    encoding = resolved.tokenizer.encode(text, add_special_tokens=False)
+    matches: list[tuple[int, int, str]] = []
+    for token_id, (start, end) in zip(encoding.ids, encoding.offsets, strict=True):
+        if token_id in resolved.special_ids and end > start:
+            matches.append((start, end, text[start:end]))
+    return matches
