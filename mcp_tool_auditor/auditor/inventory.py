@@ -9,9 +9,16 @@ package name. Every capability produced here is tagged ORIGIN_INFERRED, and
 every caller downstream (report prose, JSON, graph styling, SARIF) must
 carry that label through rather than presenting it as confirmed.
 
-Layer 3 (--probe, added later) produces the ORIGIN_CONFIRMED version of the
-same ToolCapability shape from real tools/list data, so blast-radius code
-can treat both uniformly once collected.
+Layer 3 (--probe, this module's run_inventory): connects read-only and
+enumerates real tools/resources/prompts to CONFIRM the static guess, per
+server, subject to engagement scope. Reuses MCPScanner.scan_server_stdio()/
+scan_server_url() as-is -- those already only call initialize/tools-list/
+resources-list/prompts-list, never tools/call, so "enumeration only, never
+invoke a tool" is enforced by construction, not by a new safety check here.
+The authorization ack (print_security_warning + require_ack, same as the
+existing `behavior`/`attack` commands) is a CLI-level concern and lives in
+cli.py, not here -- run_inventory() takes an already-decided `probe: bool`
+so it stays testable without mocking stdin.
 """
 
 from __future__ import annotations
@@ -203,3 +210,95 @@ def compute_chain_findings(
 
     inferred_findings = [_relabel_as_inferred(f) for f in by_pair.values()]
     return confirmed_findings + inferred_findings
+
+
+# --- Layer 3: gated live enrichment -----------------------------------
+
+
+def confirmed_capabilities(tools: list[dict[str, Any]]) -> list[ToolCapability]:
+    """Real capability tags from real tool definitions -- one per tool.
+
+    Unlike infer_capabilities(), this needs no pseudo-tool synthesis: the
+    tool dicts came straight from a live tools/list response.
+    """
+    return [
+        ToolCapability(
+            tool_name=str(tool.get("name", "unknown")),
+            roles=capability.classify(tool),
+            origin=ORIGIN_CONFIRMED,
+            high_value_source=capability.is_high_value_source(tool),
+        )
+        for tool in tools
+    ]
+
+
+@dataclass
+class ServerInventory:
+    """One discovered server's inventory record: its identity, its
+    capability tags (inferred unless `probed`), and whether/why a --probe
+    attempt against it succeeded, failed, or was never attempted."""
+
+    server: DiscoveredServer
+    capabilities: list[ToolCapability]
+    probed: bool = False
+    probe_skipped_reason: str | None = None
+
+
+@dataclass
+class InventoryResult:
+    servers: list[ServerInventory]
+    chain_findings: list[Finding]
+
+
+def run_inventory(
+    discovered: list[DiscoveredServer],
+    scanner: Any = None,
+    probe: bool = False,
+    engagement: Any = None,
+) -> InventoryResult:
+    """Build the full inventory: Layer 1 always, Layer 3 per-server when
+    `probe` is True (an already-decided boolean -- the authorization ack
+    itself is a CLI-level concern, not this function's).
+
+    A server is left at Layer 1 (inferred) whenever: `probe` is False,
+    it's out of engagement scope (engagement.check_target raises), or the
+    connection itself fails (timeout, refused, protocol error) -- inventory
+    degrades to the static map for that one server rather than aborting the
+    whole run, exactly as required. Live probing here is enumeration only:
+    it calls scan_server_stdio()/scan_server_url(), which only ever issue
+    initialize/tools-list/resources-list/prompts-list -- never tools/call.
+    """
+    confirmed_tools: dict[str, list[dict[str, Any]]] = {}
+    server_records: list[ServerInventory] = []
+
+    for server in discovered:
+        capabilities = infer_capabilities(server)
+        probed = False
+        skipped_reason: str | None = None
+
+        if probe and scanner is not None:
+            target = server.url if server.transport == "url" else server.command
+            try:
+                if engagement is not None:
+                    engagement.check_target(target)
+                if server.transport == "url":
+                    result = scanner.scan_server_url(server.url)
+                else:
+                    result = scanner.scan_server_stdio(server.command, server.args)
+                confirmed_tools[server.name] = result.tools
+                capabilities = confirmed_capabilities(result.tools)
+                probed = True
+            except Exception as exc:  # noqa: BLE001 - one server's failure must not abort the run
+                skipped_reason = str(exc)
+
+        server_records.append(
+            ServerInventory(
+                server=server,
+                capabilities=capabilities,
+                probed=probed,
+                probe_skipped_reason=skipped_reason,
+            )
+        )
+
+    chain_findings = compute_chain_findings(discovered, confirmed_tools=confirmed_tools)
+    return InventoryResult(servers=server_records, chain_findings=chain_findings)
