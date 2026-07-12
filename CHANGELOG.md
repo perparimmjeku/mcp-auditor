@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-12
+
+### Added
+- **PyPI-installable packaging, verified end-to-end** — the `pyproject.toml`,
+  `importlib.resources`-based signature loaders, and OIDC-based
+  `.github/workflows/publish.yml` already supported this; this release is the
+  verification and documentation to actually rely on it: built a wheel and sdist,
+  installed the wheel into a throwaway venv, and ran a real scan *from outside the
+  repo* confirming both `descriptions.yaml`- and `sti_tokens.yaml`-backed rules fire
+  from the installed package (not a source-tree fallback). `twine check` passes on
+  both artifacts.
+- **`RELEASING.md`** — one-time PyPI Trusted Publisher setup plus the per-release
+  steps (version bump, build, twine check, throwaway-venv smoke test, optional
+  TestPyPI dry run, tag, GitHub Release to trigger the real publish).
+- README Installation section now leads with `pip install mcp-tool-auditor` and
+  `uvx mcp-tool-auditor --help`; git-clone moved to a "From source (development)"
+  section. Notes the default install is offline/no-API-key (`pyyaml` + `requests`
+  only) and that `--llm-judge` is the separate `[llm]` extra.
+
+### Removed
+- **`signatures/parameters.yaml`** — shipped in every wheel/sdist but never loaded
+  by any code path (`StaticAnalyzer` loads `descriptions.yaml` by explicit name, not
+  a directory glob). Confirmed via repo-wide grep before deleting; verified the
+  rebuilt wheel no longer includes it. `docs/RULES.md` documents several rule ids
+  matching this file's content that were never actually emitted even before this
+  change (`SchemaAnalyzer` emits generic `FSP_PARAM_NAME`/`FSP_INJECTION_PARAM`
+  instead) — pre-existing doc drift, left for a future pass.
+
 ## [1.6.0] - 2026-07-12
 
 ### Fixed
@@ -168,6 +196,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.7.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.7.0
 [1.6.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.6.0
 [1.5.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.5.0
 [1.4.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.4.0
