@@ -83,6 +83,15 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "egress tool runs in a session that also has a sensitive-data tool available.",
     ),
     (
+        "STI_",
+        "Text contains (or was Unicode-obfuscated to contain) a model chat-template control "
+        "token — e.g. <|im_start|>, [INST], DeepSeek's <｜User｜> — that can spoof or close a "
+        "conversation turn and hijack the model's role boundary. Reject the tool/resource/"
+        "prompt and report it to the server author; never let a prompt-building layer insert "
+        "untrusted MCP text into a raw chat template without stripping/escaping control-"
+        "token-shaped substrings first.",
+    ),
+    (
         "HEUR_UNICODE",
         "Invisible/zero-width Unicode characters were found — a stealth channel for hidden "
         "instructions. Reject the tool; legitimate tools do not need invisible characters.",

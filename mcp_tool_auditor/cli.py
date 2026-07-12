@@ -110,6 +110,14 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         "semantically-poisoned phrasing static signatures miss. Opt-in only: sends "
         "third-party server content to Anthropic's API. Requires ANTHROPIC_API_KEY.",
     )
+    parser.add_argument(
+        "--sti-decode",
+        action="store_true",
+        dest="sti_decode",
+        help="Also check bounded-length base64/hex substrings for encoded Special Token "
+        "Injection (STI) payloads. Off by default: decoding is opt-in to bound cost and "
+        "false positives even with the length-banded candidate regex.",
+    )
     if include_rugpull:
         parser.add_argument(
             "--check-rugpull",
@@ -474,7 +482,7 @@ def main() -> None:
         metrics_file=args.metrics_file,
         enabled=not args.no_metrics,
     )
-    scanner = MCPScanner(config=config)
+    scanner = MCPScanner(config=config, sti_decode=getattr(args, "sti_decode", False))
 
     try:
         if args.command == "scan":

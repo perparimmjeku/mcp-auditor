@@ -14,6 +14,7 @@ from .analyzers.heuristic import HeuristicAnalyzer
 from .analyzers.rugpull import RugPullDetector
 from .analyzers.schema import SchemaAnalyzer
 from .analyzers.static import StaticAnalyzer
+from .analyzers.sti import STIAnalyzer
 from .models import Finding, ScanResult, Severity
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class MCPScanner:
         self,
         custom_signatures: list[dict[str, Any]] | None = None,
         config=None,
+        sti_decode: bool = False,
     ):
         self.config = config or get_config()
         self.static = StaticAnalyzer(custom_signatures=custom_signatures)
@@ -35,6 +37,7 @@ class MCPScanner:
         self.schema = SchemaAnalyzer(config=self.config)
         self.rugpull = RugPullDetector(fingerprint_dir=self.config.fingerprint_dir)
         self.composition = CompositionAnalyzer()
+        self.sti = STIAnalyzer(decode_encoded=sti_decode)
 
     def scan_tool_list(
         self,
@@ -59,20 +62,24 @@ class MCPScanner:
             all_findings.extend(self.static.analyze(tool))
             all_findings.extend(self.heuristic.score_tool(tool))
             all_findings.extend(self.schema.analyze(tool))
+            all_findings.extend(self.sti.analyze(tool))
 
         for resource in resources:
             all_findings.extend(self.static.analyze(resource, kind="resource"))
             all_findings.extend(self.heuristic.score_tool(resource, kind="resource"))
+            all_findings.extend(self.sti.analyze(resource, kind="resource"))
 
         for prompt in prompts:
             all_findings.extend(self.static.analyze(prompt, kind="prompt"))
             all_findings.extend(self.heuristic.score_tool(prompt, kind="prompt"))
             all_findings.extend(self.schema.analyze_prompt_arguments(prompt))
+            all_findings.extend(self.sti.analyze(prompt, kind="prompt"))
 
         if instructions:
             instructions_doc = {"name": "server_instructions", "description": instructions}
             all_findings.extend(self.static.analyze(instructions_doc, kind="instructions"))
             all_findings.extend(self.heuristic.score_tool(instructions_doc, kind="instructions"))
+            all_findings.extend(self.sti.analyze(instructions_doc, kind="instructions"))
 
         all_findings.extend(self.composition.analyze(tools))
 
