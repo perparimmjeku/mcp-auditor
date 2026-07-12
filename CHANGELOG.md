@@ -39,6 +39,48 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     the rule ids the scanner actually emits (derived from source, not hardcoded) in both
     directions — catches an emitted-but-undocumented rule and a documented-but-phantom
     one, the exact class of drift a prior session found and fixed by hand.
+- **`inventory` — host discovery + blast-radius mapping.** Turns the existing config
+  discovery (`discovery.py`) into a first-class recon deliverable: every MCP server
+  configured on the machine, its declared capabilities, its blast radius if
+  compromised, and the worst cross-server chain reaching it — reusing the capability
+  classifier and `flow.analyze()` rather than reinventing either.
+  - **Static tier (default, no execution):** a new read-only parser
+    (`discovery.parse_server_entries`) reads every client config's server entries
+    without spawning anything — command/args/env-var **names** (never values, and
+    never even read past `.keys()`), url-based entries `scan config` silently ignores
+    today, and a first-/third-party origin guess with reasoning. A tool never ran, so
+    capability tags here are a guess from launch metadata — always labeled INFERRED,
+    never presented as confirmed.
+  - **New rule `INV_INFERRED_CHAIN`** (MEDIUM, hard ceiling — inference alone can never
+    reach HIGH/CRITICAL regardless of how "coupled" the guess looks): reuses
+    `flow.analyze()`'s real pairing/coupling logic unmodified over synthesized
+    pseudo-tools, never reimplements it. Message always says "run `--probe` to
+    confirm." Once `--probe` confirms both endpoints, the pairing reports as a real
+    `FLOW_SENSITIVE_SINK`/`FLOW_CROSS_SERVER_EXFIL` finding instead and the inferred
+    one is dropped for that pair — never both at once.
+  - **`--probe` (opt-in, gated):** connects read-only and enumerates real
+    tools/resources/prompts to confirm the static guess — reuses
+    `scan_server_stdio`/`scan_server_url` unmodified, which only ever call
+    initialize/tools-list/resources-list/prompts-list, so "enumeration only, never
+    invoke a tool" is enforced by construction. Same authorization gate as
+    `behavior`/`attack` (banner + ack, `--yes`/`MCP_TOOL_AUDITOR_ASSUME_AUTHORIZED`),
+    plus per-server engagement scope enforcement — an out-of-scope or unreachable
+    server falls back to the static guess for that one server rather than aborting
+    the run.
+  - **Three outputs, one run:** a markdown/pentest host-risk report (confirmed vs.
+    inferred visibly badged ✅/🔍 on every server and every chain, not just a JSON
+    field nobody reads) with an embedded Mermaid graph (servers as nodes,
+    chains as edges, edge color = severity tier, edge/node line style = confirmed
+    vs. inferred — a benign host renders calm, not red); deterministic JSON and SARIF
+    (secret-redacted by construction, reusing `Finding.to_dict()`/`SarifReporter`
+    for the chain findings) for SOC/CMDB/DefectDojo ingestion.
+  - Found and fixed two real bugs while building this: `require_ack()`'s prompt
+    crashed with an uncaught `EOFError` when `--probe` ran non-interactively without a
+    TTY (now falls back to static cleanly, same as any other declined case), and the
+    authorization banner/prompt wrote to stdout by default, which would have
+    corrupted a piped/redirected `--format json`/`sarif` report — both moved to
+    stderr, fixing the same latent gap in the existing `behavior`/`attack` commands
+    too.
 
 ## [1.8.0] - 2026-07-12
 

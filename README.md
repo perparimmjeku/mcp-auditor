@@ -29,6 +29,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | Special Token Injection (STI) | Chat-template control tokens (`<\|im_start\|>`, `[INST]`, DeepSeek's fullwidth `<｜User｜>`, ...) via exact/Unicode-normalized/structural/encoded matching, plus an optional real-tokenizer-backed tier — in definitions *and* tool call output |
 | Cross-Tool Composition Risk | Flags a server exposing both a sensitive-data-access tool and an egress-capable tool — individually benign, chainable into exfiltration |
 | **Cross-Server Toxic-Flow Analysis** | Composition risk, generalized across the whole multi-server tool surface an agent session actually sees — a data-reading tool on one server and an egress tool on a different server, neither individually poisoned. On by default for `scan config`/`scan local`; CRITICAL/HIGH when the two tools' descriptions reference each other by name, MEDIUM for a generic pairing |
+| **`inventory` — Host Discovery & Blast-Radius Mapping** | Every MCP server configured on the machine, its declared capabilities, its blast radius if compromised, and the worst cross-server chain reaching it — a host-risk report *and* a Mermaid graph, generated with zero execution by default. `--probe` (gated, opt-in) connects read-only to confirm the static guess against real tool data |
 | Rug-Pull Detection | HMAC-signed SHA-256 schema fingerprinting; `check` detects both unexpected tool changes *and* tampered baseline files |
 | Behavioral / ATPA Detection | Calls tools and inspects responses for the benign→malicious time-bomb signature, output injection, and exfil instructions |
 | LLM Semantic Judge (opt-in) | `--llm-judge` sends descriptions to Claude to catch paraphrased poisoning that dodges static signatures |
@@ -137,6 +138,67 @@ definitions already fetched during the scan — no extra cost, no external call)
 with `--no-cross-server-flow`. A same-server pairing is `COMPOSITION_CONFUSED_DEPUTY`'s
 job, not this — a pair only counts here if the two tools come from different servers.
 Findings are suppressible like any other rule (`--suppress FLOW_SENSITIVE_SINK`).
+
+### Host Inventory & Blast-Radius Mapping
+
+`inventory` turns config discovery into a recon deliverable: every MCP server configured
+on the machine, what it can read/reach if compromised, and the worst cross-server chain
+threatening it — with **zero execution** by default:
+
+```bash
+mcp-tool-auditor inventory --format markdown
+```
+
+Every server gets tagged SOURCE/SINK/SENSITIVE_ACTION from its launch command/args/env-var
+**names alone** (never values) — a guess, not a fact, since no tool has actually run. That
+guess is never presented as confirmed: it's badged 🔍 INFERRED everywhere (report prose,
+JSON field, graph node/edge style), capped at `INV_INFERRED_CHAIN` (MEDIUM, hard ceiling —
+inference alone can never reach HIGH/CRITICAL), and every message says to run `--probe` to
+confirm it. Here's what that looks like for two servers whose launch config cross-references
+each other:
+
+```mermaid
+flowchart LR
+    classDef confirmedNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef inferredNode fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,stroke-dasharray:4 2;
+
+    fs_server["fs-server<br/>SOURCE"]
+    class fs_server inferredNode
+    http_server["http-server<br/>SINK"]
+    class http_server inferredNode
+
+    fs_server -->|"MEDIUM (possible)"| http_server
+    linkStyle 0 stroke:#9e9e9e,stroke-width:2px,stroke-dasharray:5 3;
+```
+
+`--probe` (opt-in, gated behind the same authorization ack as `behavior`/`attack`) connects
+read-only — enumeration only, never calls a tool — and CONFIRMS the guess against real
+`tools/list` data. A confirmed, name-coupled chain renders completely differently: solid
+border, ✅ CONFIRMED, red, `FLOW_CROSS_SERVER_EXFIL` at CRITICAL:
+
+```mermaid
+flowchart LR
+    classDef confirmedNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef inferredNode fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,stroke-dasharray:4 2;
+
+    fs_server["fs-server<br/>SOURCE"]
+    class fs_server confirmedNode
+    http_server["http-server<br/>SINK"]
+    class http_server confirmedNode
+
+    fs_server -->|"CRITICAL"| http_server
+    linkStyle 0 stroke:#c62828,stroke-width:2px,stroke-dasharray:0;
+```
+
+```bash
+mcp-tool-auditor inventory --probe --yes --format markdown
+```
+
+A benign host (no SOURCE+SINK pairing anywhere) reads as low-risk, not just quiet on
+one rule — no chain, no colored edge, an isolated grey node. `--format json`/`sarif` give
+the same data machine-readably (deterministic, secret-redacted by construction) for
+SOC/CMDB/DefectDojo ingestion; `--suppress`/`--suppressions` work the same as everywhere
+else.
 
 ### Register a Baseline Fingerprint
 
@@ -472,7 +534,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 64 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 65 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -483,7 +545,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 | OWASP ID | Issue | Detection |
 |---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | `ST_IGNORE_PREVIOUS`, `ST_BYPASS`, `ST_IGNORE_SECURITY` |
-| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, `FLOW_CROSS_SERVER_EXFIL`/`FLOW_SENSITIVE_SINK`, credential-related signatures |
+| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, `FLOW_CROSS_SERVER_EXFIL`/`FLOW_SENSITIVE_SINK`/`INV_INFERRED_CHAIN`, credential-related signatures |
 | MCP03 | Tool Poisoning | Signatures, heuristics, FSP, rug-pull/shadowing, STI (`STI_EXACT`/`STI_NORMALIZED`/`STI_STRUCTURAL`/`STI_ENCODED`), and behavioral/ATPA detection |
 | MCP05 | Command Injection & Execution | `ST_EXECUTE`, `ST_CODE_EXEC`, command-related schema findings |
 
@@ -534,6 +596,7 @@ mcp-auditor/
 │   │   ├── scanner.py
 │   │   ├── models.py
 │   │   ├── discovery.py
+│   │   ├── inventory.py
 │   │   ├── remediation.py
 │   │   ├── analyzers/
 │   │   │   ├── __init__.py
@@ -565,6 +628,8 @@ mcp-auditor/
 │   │       ├── json_reporter.py
 │   │       ├── markdown_reporter.py
 │   │       ├── pentest_reporter.py
+│   │       ├── inventory_reporter.py
+│   │       ├── inventory_graph.py
 │   │       └── sarif_reporter.py
 │   └── offensive/
 │       ├── __init__.py
