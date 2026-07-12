@@ -1,5 +1,6 @@
+from mcp_tool_auditor.auditor import suppressions
 from mcp_tool_auditor.auditor.analyzers import flow
-from mcp_tool_auditor.auditor.models import ScanResult, Severity
+from mcp_tool_auditor.auditor.models import CROSS_SERVER_KEY, ScanResult, Severity
 
 
 def _result(tools):
@@ -100,3 +101,20 @@ def test_coupled_pair_with_generic_source_is_high_not_critical():
     exfil = [f for f in flow.analyze(results) if f.rule == "FLOW_CROSS_SERVER_EXFIL"]
     assert len(exfil) == 1
     assert exfil[0].severity == Severity.HIGH
+
+
+def test_flow_findings_are_suppressible_via_the_synthetic_entry():
+    results = {
+        "fs-server": _result(
+            [{"name": "read_local_file", "description": "Read file contents from disk."}]
+        ),
+        "http-server": _result(
+            [{"name": "send_request", "description": "Send an HTTP POST to a webhook."}]
+        ),
+    }
+    findings = flow.analyze(results)
+    assert findings  # sanity: the generic pairing fires
+    results[CROSS_SERVER_KEY] = ScanResult(tools_scanned=0, findings=findings)
+
+    suppressed = suppressions.apply(dict(results), rules=["FLOW_SENSITIVE_SINK"])
+    assert suppressed[CROSS_SERVER_KEY].findings == []

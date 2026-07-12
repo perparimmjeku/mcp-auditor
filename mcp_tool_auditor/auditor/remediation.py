@@ -96,6 +96,21 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "egress tool runs in a session that also has a sensitive-data tool available.",
     ),
     (
+        "FLOW_CROSS_SERVER_EXFIL",
+        "A tool on one MCP server that reads sensitive data explicitly references, by name, "
+        "an outbound/egress-capable tool on a different server -- concrete evidence of an "
+        "intentional cross-server exfiltration chain. Quarantine both servers pending review; "
+        "do not run them in the same agent session until the reference is explained.",
+    ),
+    (
+        "FLOW_SENSITIVE_SINK",
+        "A sensitive-data-access tool on one MCP server and an outbound/egress-capable tool on "
+        "a different server are both reachable in the same agent session -- a generic "
+        "cross-server composition risk with no evidence the pair is actually wired together. "
+        "Review whether both servers need to be active in the same session; isolate them into "
+        "separate sessions if not, or require explicit confirmation before the egress tool runs.",
+    ),
+    (
         "STI_",
         "Text contains (or was Unicode-obfuscated to contain) a model chat-template control "
         "token — e.g. <|im_start|>, [INST], DeepSeek's <｜User｜> — that can spoof or close a "

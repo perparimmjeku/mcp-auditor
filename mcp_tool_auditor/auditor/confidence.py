@@ -22,6 +22,12 @@ _HIGH_PREFIXES = (
     "STI_TOKENIZER",
     "BEHAV_STI_TRANSITION",
     "BEHAV_STI_OUTPUT",
+    # A specific coupled pair (one tool's description names the other) is
+    # concrete evidence of wiring, not a generic co-presence guess -- unlike
+    # FLOW_SENSITIVE_SINK below, which is deliberately left at the MEDIUM
+    # default (see the comment there) precisely because it has no such
+    # evidence.
+    "FLOW_CROSS_SERVER_EXFIL",
 )
 
 _LOW_PREFIXES = (
@@ -39,6 +45,17 @@ _LOW_PREFIXES = (
 # prefix (see analyzers/surface.py) — strip it so e.g. "RES_ST_IGNORE_PREVIOUS"
 # is classified the same as "ST_IGNORE_PREVIOUS".
 _KIND_PREFIXES = ("RES_", "PROMPT_", "INSTR_")
+
+# COMPOSITION_CONFUSED_DEPUTY and FLOW_SENSITIVE_SINK are intentionally in
+# neither list above, so both fall through to the MEDIUM default. Both are
+# Severity.HIGH/MEDIUM-impact-if-real but generic co-presence heuristics (a
+# sensitive-access tool and an egress tool happen to both exist) with no
+# evidence the pairing is actually wired together -- severity reflects
+# potential impact, confidence reflects certainty of the specific match, and
+# these deliberately score high on the former and modest on the latter so
+# they don't fire as hard as a definitive signature match. Contrast
+# FLOW_CROSS_SERVER_EXFIL above, which requires a name cross-reference
+# between the two tools and is scored HIGH confidence accordingly.
 
 
 def confidence_for(rule: str) -> str:

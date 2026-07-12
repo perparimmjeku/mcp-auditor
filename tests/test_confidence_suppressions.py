@@ -25,6 +25,15 @@ def test_confidence_defaults_medium():
     assert confidence_for("SOMETHING_ELSE") == "MEDIUM"
 
 
+def test_confidence_flow_tiers():
+    # Coupled cross-server pair (name cross-reference) is definitive evidence
+    # of wiring -> HIGH. Generic co-presence (no evidence of wiring) stays at
+    # the MEDIUM default, deliberately not promoted -- see confidence.py.
+    assert confidence_for("FLOW_CROSS_SERVER_EXFIL") == "HIGH"
+    assert confidence_for("FLOW_SENSITIVE_SINK") == "MEDIUM"
+    assert confidence_for("COMPOSITION_CONFUSED_DEPUTY") == "MEDIUM"
+
+
 def test_finding_resolves_confidence_on_creation():
     assert _finding("ST_BYPASS").confidence == "HIGH"
     assert _finding("HEUR_IMPERATIVE").confidence == "LOW"

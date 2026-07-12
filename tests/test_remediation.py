@@ -20,3 +20,8 @@ def test_known_rule_families_listed():
     families = remediation.list_families()
     assert "BEHAV_ATPA_TRANSITION" in families
     assert "FSP" in families
+
+
+def test_flow_rules_have_specific_remediation():
+    assert "exfiltration" in remediation.get_remediation("FLOW_CROSS_SERVER_EXFIL").lower()
+    assert "composition" in remediation.get_remediation("FLOW_SENSITIVE_SINK").lower()
