@@ -120,6 +120,65 @@ def test_payload_binds_tool_version_and_engagement_metadata(monkeypatch):
     assert sidecar["tool_version"] == "9.9.9"
 
 
+def test_canonical_payload_is_deterministic_across_dict_insertion_order(monkeypatch):
+    """Required for (A) to work at all: two ScanResult dicts with the same
+    findings/metadata but built in a DIFFERENT insertion order (e.g. two
+    separate scan runs that happen to enumerate servers differently) must
+    produce a byte-identical canonical payload, or the same real findings
+    could sign to two different signatures depending on incidental ordering."""
+    findings_a = [
+        Finding(
+            severity=Severity.HIGH,
+            rule="ST_IGNORE_PREVIOUS",
+            message="m-a",
+            owasp_id="MCP01",
+            tool_name="tool_a",
+        )
+    ]
+    findings_b = [
+        Finding(
+            severity=Severity.MEDIUM,
+            rule="HEUR_IMPERATIVE",
+            message="m-b",
+            owasp_id="MCP03",
+            tool_name="tool_b",
+        )
+    ]
+    results_order_1 = {
+        "server-a": ScanResult(tools_scanned=1, findings=findings_a),
+        "server-b": ScanResult(tools_scanned=1, findings=findings_b),
+    }
+    results_order_2 = {
+        "server-b": ScanResult(tools_scanned=1, findings=findings_b),
+        "server-a": ScanResult(tools_scanned=1, findings=findings_a),
+    }
+    engagement = _engagement()
+    payload_1 = report_signing.build_canonical_payload(
+        results_order_1, "9.9.9", engagement=engagement
+    )
+    payload_2 = report_signing.build_canonical_payload(
+        results_order_2, "9.9.9", engagement=engagement
+    )
+    assert payload_1 == payload_2
+
+    from mcp_tool_auditor.auditor import signing
+
+    assert signing.canonical_bytes(payload_1) == signing.canonical_bytes(payload_2)
+
+
+def test_sign_report_is_reproducible_modulo_timestamp(monkeypatch):
+    monkeypatch.setenv("MCP_TOOL_AUDITOR_REPORT_KEY", "test-key-for-signing")
+    results = _results()
+    engagement = _engagement()
+    sidecar_1 = report_signing.sign_report(results, "9.9.9", engagement=engagement)
+    sidecar_2 = report_signing.sign_report(results, "9.9.9", engagement=engagement)
+    assert sidecar_1["signature"] == sidecar_2["signature"]
+    assert sidecar_1["payload_sha256"] == sidecar_2["payload_sha256"]
+    assert sidecar_1["payload"] == sidecar_2["payload"]
+    # The only field allowed to differ between two signings of the same data.
+    assert "signed_at" in sidecar_1 and "signed_at" in sidecar_2
+
+
 def test_payload_without_engagement_has_empty_but_present_fields(monkeypatch):
     monkeypatch.setenv("MCP_TOOL_AUDITOR_REPORT_KEY", "test-key-for-signing")
     sidecar = report_signing.sign_report(_results(), "9.9.9", engagement=None)
