@@ -28,6 +28,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | Schema Anomaly Detection | Full-Schema Poisoning (FSP), sidenote parameter injection, enum injection, poisoned defaults, and required-array abuse |
 | Special Token Injection (STI) | Chat-template control tokens (`<\|im_start\|>`, `[INST]`, DeepSeek's fullwidth `<｜User｜>`, ...) via exact/Unicode-normalized/structural/encoded matching, plus an optional real-tokenizer-backed tier — in definitions *and* tool call output |
 | Cross-Tool Composition Risk | Flags a server exposing both a sensitive-data-access tool and an egress-capable tool — individually benign, chainable into exfiltration |
+| **Cross-Server Toxic-Flow Analysis** | Composition risk, generalized across the whole multi-server tool surface an agent session actually sees — a data-reading tool on one server and an egress tool on a different server, neither individually poisoned. On by default for `scan config`/`scan local`; CRITICAL/HIGH when the two tools' descriptions reference each other by name, MEDIUM for a generic pairing |
 | Rug-Pull Detection | HMAC-signed SHA-256 schema fingerprinting; `check` detects both unexpected tool changes *and* tampered baseline files |
 | Behavioral / ATPA Detection | Calls tools and inspects responses for the benign→malicious time-bomb signature, output injection, and exfil instructions |
 | LLM Semantic Judge (opt-in) | `--llm-judge` sends descriptions to Claude to catch paraphrased poisoning that dodges static signatures |
@@ -109,6 +110,33 @@ mcp-tool-auditor scan url http://localhost:8080/mcp \
 mcp-tool-auditor scan config \
   ~/.config/Claude/claude_desktop_config.json
 ```
+
+Every server in the config is scanned, then the COMBINED tool surface is checked for
+cross-server toxic flows — see below.
+
+### Cross-Server Toxic-Flow Analysis
+
+A real agent session has tools from several MCP servers active at once. A tool that
+reads secrets/files/env/browser data on one server and a tool that can send data out
+(HTTP, email, webhook) on a *different* server form an exfiltration path that no
+single-server scan can see, even though neither tool looks poisoned on its own —
+that's what `scan config`/`scan local` check automatically:
+
+```bash
+mcp-tool-auditor scan config ~/.config/Claude/claude_desktop_config.json
+# FLOW_SENSITIVE_SINK   (MEDIUM)   generic source+sink pairing across two servers
+# FLOW_CROSS_SERVER_EXFIL (HIGH/CRITICAL) one tool's description names the other —
+#                                  evidence the pairing is wired together, not incidental
+```
+
+Every tool across the whole scan is tagged SOURCE (reads sensitive data), SINK (can
+egress data), or SENSITIVE_ACTION (destructive/state-changing) from its
+name/description/schema — the same signature-matching approach as the rest of the
+scanner, not a fresh classifier. On by default (pure local static analysis over tool
+definitions already fetched during the scan — no extra cost, no external call); disable
+with `--no-cross-server-flow`. A same-server pairing is `COMPOSITION_CONFUSED_DEPUTY`'s
+job, not this — a pair only counts here if the two tools come from different servers.
+Findings are suppressible like any other rule (`--suppress FLOW_SENSITIVE_SINK`).
 
 ### Register a Baseline Fingerprint
 
@@ -444,7 +472,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 62 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 64 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -455,7 +483,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 | OWASP ID | Issue | Detection |
 |---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | `ST_IGNORE_PREVIOUS`, `ST_BYPASS`, `ST_IGNORE_SECURITY` |
-| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, credential-related signatures |
+| MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, `FLOW_CROSS_SERVER_EXFIL`/`FLOW_SENSITIVE_SINK`, credential-related signatures |
 | MCP03 | Tool Poisoning | Signatures, heuristics, FSP, rug-pull/shadowing, STI (`STI_EXACT`/`STI_NORMALIZED`/`STI_STRUCTURAL`/`STI_ENCODED`), and behavioral/ATPA detection |
 | MCP05 | Command Injection & Execution | `ST_EXECUTE`, `ST_CODE_EXEC`, command-related schema findings |
 
@@ -515,6 +543,8 @@ mcp-tool-auditor/
 │   │   │   ├── rugpull.py
 │   │   │   ├── behavioral.py
 │   │   │   ├── composition.py
+│   │   │   ├── capability.py
+│   │   │   ├── flow.py
 │   │   │   ├── llm_judge.py
 │   │   │   ├── sti.py
 │   │   │   ├── sti_tokenizer.py

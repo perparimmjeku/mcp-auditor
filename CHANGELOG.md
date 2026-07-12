@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-12
+
+### Added
+- **Cross-server toxic-flow analysis** — the real exfiltration risk on a live engagement
+  is usually ACROSS servers, not within one: an agent session has tools from several MCP
+  servers active at once, and a data-reading tool on one server plus an egress-capable
+  tool on a different server form a chain that no single-server scan can see, even
+  though neither tool looks poisoned alone. `scan config`/`scan local` now check the
+  combined multi-server tool surface for this automatically.
+  - New reusable capability classifier (`analyzers/capability.py`) tags each tool SOURCE
+    (reads sensitive data: files, secrets, env, db, browser, credentials), SINK (can
+    egress: http/network, email/messaging, external writes), or SENSITIVE_ACTION
+    (destructive/state-changing), reusing the existing composition.py/heuristic.py
+    signature-matching approach rather than a fresh classifier.
+  - New `analyzers/flow.py` (sibling to `composition.py`, not merged into it — needs the
+    whole multi-server results dict, not one server's tool list). Two rules:
+    `FLOW_SENSITIVE_SINK` (MEDIUM) for a generic cross-server SOURCE+SINK pairing with no
+    evidence of wiring — deliberately restrained so it doesn't fire on every multi-server
+    host with unrelated file and http tools; `FLOW_CROSS_SERVER_EXFIL` (HIGH, or CRITICAL
+    when the source is credential/secret-grade) for a pair where one tool's description
+    references the other by name — concrete evidence the pairing is intentional.
+    Same-server pairs are still `COMPOSITION_CONFUSED_DEPUTY`'s job, not this family's.
+  - New multi-origin `Finding` fields (`related_tool`, `related_server`) and a synthetic
+    `__cross_server__` results-dict entry for findings that implicate two servers at
+    once — purely additive, every existing single-origin finding is unchanged. Excluded
+    from "servers scanned"/"targets assessed" counts across all reporters and scan
+    metrics; its findings still count toward severity/OWASP totals.
+  - On by default (pure local static analysis over tool definitions already fetched
+    during the scan — unlike `--llm-judge`/`--sti-decode`/`--sti-tokenizer`, no external
+    call, no cost, no extra dependency to justify opt-in). Disable with
+    `--no-cross-server-flow`. Findings are suppressible like any other rule.
+  - New `tests/test_rules_doc_drift.py` guards `docs/RULES.md`'s rule catalog against
+    the rule ids the scanner actually emits (derived from source, not hardcoded) in both
+    directions — catches an emitted-but-undocumented rule and a documented-but-phantom
+    one, the exact class of drift a prior session found and fixed by hand.
+
 ## [1.8.0] - 2026-07-12
 
 ### Added
@@ -235,6 +271,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.9.0]: https://github.com/perparimmjeku/mcp-auditor/releases/tag/v1.9.0
 [1.8.0]: https://github.com/perparimmjeku/mcp-auditor/releases/tag/v1.8.0
 [1.7.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.7.0
 [1.6.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.6.0
