@@ -131,6 +131,17 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         "our registry doesn't list. Off by default; requires "
         "'pip install mcp-tool-auditor[tokenizers]'.",
     )
+    parser.add_argument(
+        "--no-cross-server-flow",
+        action="store_false",
+        dest="cross_server_flow",
+        default=True,
+        help="Disable cross-server toxic-flow analysis (FLOW_*). On by default when 2+ "
+        "servers are scanned in one run (config/local): pure local static analysis over "
+        "already-fetched tool definitions, no extra cost or external calls, same "
+        "FP-restraint posture as the always-on composition analyzer. No-ops on a "
+        "single-server scan.",
+    )
     if include_rugpull:
         parser.add_argument(
             "--check-rugpull",
@@ -571,6 +582,27 @@ def _apply_llm_judge(results: dict[str, ScanResult], enabled: bool) -> None:
             )
 
 
+def _apply_cross_server_flow(results: dict[str, ScanResult], enabled: bool) -> None:
+    """Optionally add a CROSS_SERVER_KEY entry with cross-server toxic-flow findings.
+
+    On by default (unlike --llm-judge/--sti-decode/--sti-tokenizer, which are
+    opt-in for cost/dependency/FP-volume reasons that don't apply here: this
+    is local static analysis over tool definitions already in `results`, no
+    network call, no extra dependency). Adds nothing when disabled or when
+    flow.analyze() finds nothing -- in particular, a true single-target scan
+    can never produce a cross-server finding (it needs 2+ servers), so the
+    synthetic key never appears for one, and `len(results) == 1` still holds
+    wherever that's relied on (e.g. retest's single_target detection).
+    """
+    if not enabled:
+        return
+    from .auditor.analyzers import flow
+
+    findings = flow.analyze(results)
+    if findings:
+        results[CROSS_SERVER_KEY] = ScanResult(tools_scanned=0, findings=findings)
+
+
 def _handle_scan(
     args, scanner: MCPScanner, config, metrics_collector: MetricsCollector, engagement=None
 ) -> None:
@@ -578,6 +610,7 @@ def _handle_scan(
     try:
         results = _run_scan(args, scanner, engagement=engagement)
         _apply_llm_judge(results, getattr(args, "llm_judge", False))
+        _apply_cross_server_flow(results, getattr(args, "cross_server_flow", True))
         severity = args.severity or config.min_severity
         results = _filter_results(results, severity)
         results = _apply_triage(results, args)
@@ -775,6 +808,7 @@ def _handle_retest(args, scanner: MCPScanner, config, engagement=None) -> None:
 
     results = _run_scan(args, scanner, engagement=engagement)
     _apply_llm_judge(results, getattr(args, "llm_judge", False))
+    _apply_cross_server_flow(results, getattr(args, "cross_server_flow", True))
     severity = args.severity or config.min_severity
     results = _filter_results(results, severity)
     results = _apply_triage(results, args)
