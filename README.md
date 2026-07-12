@@ -37,6 +37,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | Continuous Monitoring | `watch` re-scans on an interval and alerts a webhook on newly-observed findings |
 | Engagement Scope Guardrails | `--engagement` refuses to scan targets outside an authorized-scope file |
 | Client-Ready Reporting | `--format pentest` — engagement header, executive summary, methodology, evidence, remediation |
+| Signed, Verifiable Reports | `--sign` HMAC-signs a canonical findings+scope+version payload (not the report bytes) into a `.sig` sidecar; `verify-report` checks it VALID/TAMPERED/INVALID. Report stays freely editable — only the findings/scope are attested |
 | Retest Workflow | `retest --baseline <report>` diffs a re-scan into Fixed / Still Present / New |
 | OWASP Mapping | Labels findings across the OWASP MCP Top 10 (active detection for MCP01, MCP02, MCP03, MCP05) |
 
@@ -345,6 +346,45 @@ mcp-tool-auditor retest --baseline baseline.json url https://mcp.acme.example.co
 `--fail-on` on `retest` gates on unresolved findings only (Still Present + New) — a
 clean retest where everything's Fixed exits 0.
 
+**4. Signed, verifiable reports** — `--sign` writes a chain-of-custody sidecar
+alongside any report (`scan`/`retest`/`source-scan`, any `--format`), binding the
+findings, engagement scope, and tool version:
+
+```bash
+mcp-tool-auditor --engagement engagement.json scan url https://mcp.acme.example.com/mcp \
+  --format pentest -o report.md --sign
+# writes report.md AND report.md.sig
+
+mcp-tool-auditor verify-report report.md.sig
+# Status: VALID
+```
+
+**What's attested** — not the report's bytes. `report.md.sig` signs a canonical,
+deterministic payload (every finding + which server it came from + the engagement's
+client/tester/dates/scope + the tool version), built straight from the same data the
+report renders from. The human report stays freely editable — reformat it, add a
+letterhead, export to PDF, annotate it for legal review — none of that touches the
+signature, because the signature was never over the report's text in the first place.
+What *does* invalidate it: changing a finding's severity/rule/message, re-attributing a
+finding to a different server (scope tampering), or editing the engagement metadata
+after the fact.
+
+`verify-report` reports `VALID`, `TAMPERED` (the payload was altered after signing —
+right key, wrong data), or `INVALID` (wrong key, or a malformed sidecar) — exit code 0
+for VALID, 2 for anything else, so it drops straight into a CI gate.
+
+**Key handling** — same trust-boundary model as the rug-pull baseline key, but a
+*separate* key (`MCP_TOOL_AUDITOR_REPORT_KEY`, vs. baselines' `..._BASELINE_KEY`): a
+report signature may need to leave your machine entirely so a client can verify it
+independently, and handing out the same key that also protects local rug-pull baseline
+integrity would put an unrelated trust boundary at risk. Auto-generated and persisted
+locally (`~/.mcp-tool-auditor/reports/.hmac_key`, `0600` permissions) if you don't
+supply one; for anything beyond solo local use, set `MCP_TOOL_AUDITOR_REPORT_KEY`
+out-of-band (a CI secret, a password manager) so the key and the reports it signs don't
+share a trust boundary — same reasoning as the baseline key. The key is never printed
+or written into the sidecar; only a `key_id` (a short, one-way fingerprint) is, so a
+verifier can tell *which* key produced a signature without ever seeing it.
+
 ### Auto-Discover and Scan Local MCP Configs
 
 ```bash
@@ -597,6 +637,8 @@ mcp-auditor/
 │   │   ├── models.py
 │   │   ├── discovery.py
 │   │   ├── inventory.py
+│   │   ├── signing.py
+│   │   ├── report_signing.py
 │   │   ├── remediation.py
 │   │   ├── analyzers/
 │   │   │   ├── __init__.py

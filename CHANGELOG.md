@@ -81,6 +81,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     corrupted a piped/redirected `--format json`/`sarif` report — both moved to
     stderr, fixing the same latent gap in the existing `behavior`/`attack` commands
     too.
+- **Signed, verifiable pentest reports (chain-of-custody).** `--sign` (any
+  `scan`/`retest`/`source-scan`, any `--format`) writes a `.sig` sidecar binding the
+  findings, engagement scope (client/tester/dates/targets), and tool version — not the
+  report's bytes, so the human-readable report stays freely editable (reformatted,
+  annotated, exported to PDF) without invalidating the signature. New `verify-report`
+  subcommand reports VALID/TAMPERED/INVALID (exit 0/2, CI-gate-ready).
+  - New `auditor/signing.py`: the HMAC-SHA256 primitive extracted verbatim from
+    `RugPullDetector`'s existing baseline signing (`load_or_create_key`/`sign`,
+    identical key-file/env-var-override logic and canonical-JSON construction),
+    reused rather than duplicated — verified the extraction against the existing
+    rug-pull signing test suite unchanged (5/5 still pass).
+  - New `auditor/report_signing.py` builds a canonical, deterministic payload
+    (findings — each stamped with which server it came from, so re-attributing a
+    finding to hide it was in-scope is caught too — engagement metadata, tool
+    version, explicitly sorted) straight from the same `results`/`engagement` data
+    `PentestReporter` already renders from, and signs *that*, not the rendered
+    markdown. Verified with the load-bearing test: reformatting/annotating an
+    already-signed report's text doesn't affect verification at all.
+  - Deliberately a **separate key** from the baseline key
+    (`MCP_TOOL_AUDITOR_REPORT_KEY` / `~/.mcp-tool-auditor/reports/.hmac_key`, not
+    `..._BASELINE_KEY`) — a report signature may need to leave the machine for a
+    client to verify independently; the baseline key never should. Same primitive,
+    same out-of-band-key trust-boundary reasoning, different key.
+  - `key_id` (a short, one-way key fingerprint, never the key itself) is the
+    discriminator between `TAMPERED` and `INVALID`: both look identical at the raw
+    HMAC layer, but a `key_id` mismatch means the verifier used the wrong key
+    (`INVALID`), while a matching `key_id` with a failed HMAC check means the
+    payload was altered after signing (`TAMPERED`).
+  - Determinism verified explicitly: the same findings/metadata produce a
+    byte-identical canonical payload regardless of dict insertion order, and
+    re-signing identical data twice reproduces the same signature (only `signed_at`
+    differs) — required for signing a canonical payload to work at all.
 
 ## [1.8.0] - 2026-07-12
 
