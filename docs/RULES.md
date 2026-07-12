@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **62 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **64 rules** across 12 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -118,6 +118,28 @@ _Flags a server that exposes both a sensitive-data-access tool (credentials, sec
 tokens, ...) and a separate outbound-network/send-capable tool — an agent with both in
 one session can chain them to exfiltrate data, even though neither tool looks poisoned
 on its own._
+
+## Cross-server toxic flow
+
+_Composition risk, generalized ACROSS servers — an agent session has tools from several
+MCP servers active at once, and a read-then-exfil path can span two servers that
+individually look clean_
+
+| Rule | Confidence |
+|---|---|
+| `FLOW_CROSS_SERVER_EXFIL` | HIGH |
+| `FLOW_SENSITIVE_SINK` | MEDIUM |
+
+_Each tool across the whole scanned tool surface is tagged SOURCE (reads sensitive
+data), SINK (can egress data), or SENSITIVE_ACTION (destructive/state-changing).
+`FLOW_SENSITIVE_SINK` fires when a SOURCE tool on one server and a SINK tool on a
+different server coexist, with no evidence they're wired together — deliberately
+restrained (MEDIUM, aggregated per server pair) so it doesn't fire on every
+multi-server host with unrelated file and http tools. `FLOW_CROSS_SERVER_EXFIL` fires
+on the specific, rarer case: one tool's description references the other tool by name,
+evidence the pairing is intentional — CRITICAL if the source is credential/secret-grade,
+HIGH otherwise. Same-server pairs are `COMPOSITION_CONFUSED_DEPUTY`'s job, not this
+family's — a pair only counts here if the two tools come from different servers._
 
 ## Special Token Injection (STI)
 
