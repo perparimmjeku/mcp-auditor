@@ -100,6 +100,7 @@ class SarifReporter:
                             "tool_name": finding.tool_name,
                             "field": finding.field,
                             "confidence": finding.confidence,
+                            "retest_status": finding.retest_status,
                         },
                     }
                 )
