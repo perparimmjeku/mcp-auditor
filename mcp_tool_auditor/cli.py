@@ -15,6 +15,7 @@ import time
 from .auditor import discovery, remediation, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
+from .auditor.analyzers.sti_tokenizer import parse_tokenizer_spec
 from .auditor.models import SEVERITY_LEVELS, Finding, ScanResult, Severity
 from .auditor.reporters.json_reporter import JSONReporter
 from .auditor.reporters.markdown_reporter import MarkdownReporter
@@ -510,7 +511,11 @@ def main() -> None:
         metrics_file=args.metrics_file,
         enabled=not args.no_metrics,
     )
-    scanner = MCPScanner(config=config, sti_decode=getattr(args, "sti_decode", False))
+    scanner = MCPScanner(
+        config=config,
+        sti_decode=getattr(args, "sti_decode", False),
+        sti_tokenizer_names=parse_tokenizer_spec(getattr(args, "sti_tokenizer", None)),
+    )
 
     try:
         if args.command == "scan":

@@ -30,6 +30,7 @@ class MCPScanner:
         custom_signatures: list[dict[str, Any]] | None = None,
         config=None,
         sti_decode: bool = False,
+        sti_tokenizer_names: list[str] | None = None,
     ):
         self.config = config or get_config()
         self.static = StaticAnalyzer(custom_signatures=custom_signatures)
@@ -37,7 +38,7 @@ class MCPScanner:
         self.schema = SchemaAnalyzer(config=self.config)
         self.rugpull = RugPullDetector(fingerprint_dir=self.config.fingerprint_dir)
         self.composition = CompositionAnalyzer()
-        self.sti = STIAnalyzer(decode_encoded=sti_decode)
+        self.sti = STIAnalyzer(decode_encoded=sti_decode, tokenizer_names=sti_tokenizer_names)
 
     def scan_tool_list(
         self,

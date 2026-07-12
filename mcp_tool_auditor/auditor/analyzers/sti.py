@@ -138,18 +138,26 @@ def _load_registry() -> tuple[tuple[str, str, str], ...]:
 class STIMatch:
     """One Special Token Injection match, tier-tagged for confidence scoring."""
 
-    tier: str  # "exact" | "normalized" | "structural" | "encoded"
+    tier: str  # "exact" | "normalized" | "structural" | "encoded" | "tokenizer"
     token: str  # the registry token (or matched shape, for structural) that fired
     family: str  # model family, e.g. "chatml_openai_qwen"; "unknown" for structural
     surface: str  # "tool" | "resource" | "prompt" | "instructions"
     offset: int  # character offset of the match (see tier notes on which string)
     raw_match: str  # the actual substring found
+    # Only set for tier="tokenizer" (None for the four string tiers): which
+    # --sti-tokenizer target(s) confirmed this via a real tokenizer's
+    # encode(), comma-joined if more than one target agreed.
+    tokenizer: str | None = None
+    resolved_special: bool | None = None
 
 
 class STIMatcher:
-    """Runs the four STI matching tiers over a single text string."""
+    """Runs the four string-based STI matching tiers, plus an optional fifth
 
-    def __init__(self, decode_encoded: bool = False):
+    tokenizer-backed tier, over a single text string.
+    """
+
+    def __init__(self, decode_encoded: bool = False, tokenizer_names: list[str] | None = None):
         self.decode_encoded = decode_encoded
         self._registry = _load_registry()
         # normalized-form -> (canonical registry token, family). Built from
@@ -160,6 +168,14 @@ class STIMatcher:
         self._normalized_index: dict[str, tuple[str, str]] = {
             _normalize(token): (token, family) for token, family, _note in self._registry
         }
+        # Resolved once at construction (same pattern as decode_encoded) so
+        # a scan doesn't re-log the same missing-dependency/unknown-name
+        # warnings on every tool/resource/prompt/instructions item.
+        self._resolved_tokenizers: list[Any] = []
+        if tokenizer_names:
+            from .sti_tokenizer import TokenizerRegistry
+
+            self._resolved_tokenizers = TokenizerRegistry().resolve(tokenizer_names)
 
     def find(self, text: str, surface: str = "tool") -> list[STIMatch]:
         if not text:
@@ -173,7 +189,87 @@ class STIMatcher:
         matches = exact_matches + normalized_matches + structural_matches
         if self.decode_encoded:
             matches += self._match_encoded(text, surface)
+        if self._resolved_tokenizers:
+            matches = self._apply_tokenizer_tier(
+                text, surface, matches, exact_matches, structural_matches
+            )
         return matches
+
+    def _apply_tokenizer_tier(
+        self,
+        text: str,
+        surface: str,
+        matches: list[STIMatch],
+        exact_matches: list[STIMatch],
+        structural_matches: list[STIMatch],
+    ) -> list[STIMatch]:
+        """Cross-reference real-tokenizer spans against the string tiers.
+
+        Only exact/structural share both a coordinate system (offsets into
+        the original, unmodified text) and literal-text semantics with the
+        tokenizer tier -- normalized operates on folded text (an obfuscated
+        string was never going to be recognized as its own literal token by
+        a real tokenizer anyway) and encoded's span is an opaque blob, not
+        the literal token text. Neither participates in confirm/diverge.
+
+        A span the tokenizer confirms that overlaps a string-tier match:
+        replace it with ONE tier="tokenizer" finding (the confirmation is
+        strictly more certain, so the plain string finding would be
+        redundant). A span the tokenizer confirms that no string tier
+        found: append as a new, standalone finding -- a token our registry
+        doesn't list. A string-tier match no configured tokenizer confirms:
+        left completely unchanged -- that divergence ("looks like a token,
+        but this tokenizer won't parse it as one") is itself signal and
+        must not be silently dropped.
+        """
+        from .sti_tokenizer import find_tokenizer_matches
+
+        confirmable = {(m.offset, m.raw_match): m for m in exact_matches + structural_matches}
+        confirmations: dict[tuple[int, str], list[str]] = {}
+        novel: dict[tuple[int, str], str] = {}  # key -> confirming tokenizer name
+
+        for resolved in self._resolved_tokenizers:
+            for start, _end, substring in find_tokenizer_matches(text, resolved):
+                key = (start, substring)
+                if key in confirmable:
+                    confirmations.setdefault(key, []).append(resolved.name)
+                elif key not in novel:
+                    novel[key] = resolved.name
+
+        result: list[STIMatch] = []
+        for m in matches:
+            key = (m.offset, m.raw_match)
+            names = confirmations.get(key) if key in confirmable else None
+            if names:
+                result.append(
+                    STIMatch(
+                        tier="tokenizer",
+                        token=m.token,
+                        family=m.family,
+                        surface=surface,
+                        offset=m.offset,
+                        raw_match=m.raw_match,
+                        tokenizer=", ".join(sorted(names)),
+                        resolved_special=True,
+                    )
+                )
+            else:
+                result.append(m)
+
+        for (start, substring), tokenizer_name in novel.items():
+            result.append(
+                STIMatch(
+                    tier="tokenizer",
+                    token=substring,
+                    family=tokenizer_name,
+                    surface=surface,
+                    offset=start,
+                    raw_match=substring,
+                    tokenizer=tokenizer_name,
+                    resolved_special=True,
+                )
+            )
+        return result
 
     def _match_exact(self, text: str, surface: str) -> list[STIMatch]:
         found: list[STIMatch] = []
@@ -305,6 +401,7 @@ _TIER_RULE = {
     "normalized": "STI_NORMALIZED",
     "structural": "STI_STRUCTURAL",
     "encoded": "STI_ENCODED",
+    "tokenizer": "STI_TOKENIZER",
 }
 
 _TIER_DESCRIPTION = {
@@ -313,6 +410,7 @@ _TIER_DESCRIPTION = {
     "special chat-template control token",
     "structural": "contains text shaped like an unrecognized model control token",
     "encoded": "contains a base64/hex-encoded special chat-template control token",
+    "tokenizer": "resolves to a special/added-vocabulary token id",
 }
 
 
@@ -345,8 +443,8 @@ class STIAnalyzer:
     detection logic covers all four MCP surfaces via rule_for_kind/label_for_kind.
     """
 
-    def __init__(self, decode_encoded: bool = False):
-        self._matcher = STIMatcher(decode_encoded=decode_encoded)
+    def __init__(self, decode_encoded: bool = False, tokenizer_names: list[str] | None = None):
+        self._matcher = STIMatcher(decode_encoded=decode_encoded, tokenizer_names=tokenizer_names)
 
     def analyze(self, tool: dict[str, Any], kind: str = "tool") -> list[Finding]:
         tool_name = tool.get("name", "unknown")
@@ -355,23 +453,31 @@ class STIAnalyzer:
         return [self._finding_from_match(m, tool_name, kind) for m in matches]
 
     def _finding_from_match(self, match: STIMatch, tool_name: str, kind: str) -> Finding:
-        severity = Severity.HIGH if match.tier in {"exact", "normalized"} else Severity.MEDIUM
+        severity = (
+            Severity.HIGH if match.tier in {"exact", "normalized", "tokenizer"} else Severity.MEDIUM
+        )
         offset_note = (
             f"offset {match.offset} (post-normalization)"
             if match.tier == "normalized"
             else f"offset {match.offset}"
+        )
+        confirmed_by = (
+            f", confirmed by real tokenizer: {match.tokenizer}" if match.tokenizer else ""
+        )
+        field = (
+            f"sti.tokenizer.{match.tokenizer}" if match.tier == "tokenizer" else f"sti.{match.tier}"
         )
         return Finding(
             severity=severity,
             rule=rule_for_kind(_TIER_RULE[match.tier], kind),
             message=(
                 f"{label_for_kind(kind)} '{tool_name}': {_TIER_DESCRIPTION[match.tier]} "
-                f"({match.family}) at {offset_note}: {safe_snippet(match.raw_match)}"
+                f"({match.family}{confirmed_by}) at {offset_note}: {safe_snippet(match.raw_match)}"
             ),
             owasp_id="MCP03",
             attack_type="special_token_injection",
             tool_name=tool_name,
-            field=f"sti.{match.tier}",
+            field=field,
         )
 
     @staticmethod
