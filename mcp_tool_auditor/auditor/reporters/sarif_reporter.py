@@ -31,6 +31,11 @@ _SCHEMA = (
     "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
 )
 
+# RULES.md has no stable per-rule anchors (rule ids are table rows, not
+# headers), so every rule points at the same catalog page rather than a
+# rule-specific fragment.
+_RULES_DOC_URI = "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md"
+
 
 class SarifReporter:
     @staticmethod
@@ -55,10 +60,14 @@ class SarifReporter:
                                 finding.rule, finding.owasp_id, finding.attack_type
                             )
                         },
+                        "helpUri": _RULES_DOC_URI,
                         "defaultConfiguration": {"level": _LEVEL.get(severity, "warning")},
                         "properties": {
                             "tags": ["security", "mcp", finding.owasp_id],
                             "security-severity": _SECURITY_SEVERITY.get(severity, "5.5"),
+                            # Populated by a future ATLAS mapping; empty for now so
+                            # that addition doesn't require a schema/structure change.
+                            "atlas_ids": [],
                         },
                     }
 
