@@ -282,6 +282,8 @@ Examples:
             "tool_shadowing",
             "rug_pull_prep",
             "atpa_error_based",
+            "sti_chatml_injection",
+            "sti_deepseek_homoglyph",
         ],
         help="Attack type to generate (default: all)",
     )
@@ -334,6 +336,20 @@ Examples:
         type=int,
         default=5,
         help="Number of requests before swapping to poisoned tools",
+    )
+
+    sti_p = atk_sub.add_parser("sti", help="Start STI (Special Token Injection) simulation server")
+    sti_p.add_argument("--port", type=int, default=8082)
+    sti_p.add_argument(
+        "--yes",
+        action="store_true",
+        help="Acknowledge authorization warning non-interactively",
+    )
+    sti_p.add_argument(
+        "--threshold",
+        type=int,
+        default=3,
+        help="Number of benign calls before a chat-template control token is injected",
     )
 
     # --- behavior ---
@@ -1039,8 +1055,13 @@ def _handle_attack(args) -> None:
 
         sys.argv = [sys.argv[0], str(args.port), str(args.switch_after)]
         rugpull_main()
+    elif args.attack_type == "sti":
+        from .offensive.sti_server import main as sti_main
+
+        sys.argv = [sys.argv[0], str(args.port), str(args.threshold)]
+        sti_main()
     else:
-        raise ValidationError("Specify 'atpa' or 'rugpull'")
+        raise ValidationError("Specify 'atpa', 'rugpull', or 'sti'")
 
 
 if __name__ == "__main__":

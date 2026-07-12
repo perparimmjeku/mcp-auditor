@@ -27,6 +27,13 @@ This simulates rug-pull behavior: a server serves benign tools first,
 then swaps to poisoned definitions after approval.
 """
 
+STI_SPECIFIC = """
+This simulates Special Token Injection (STI) time-bomb behavior: tools
+appear benign, then emit a model chat-template control token (e.g.
+<|im_start|>, DeepSeek's fullwidth <｜User｜>) in their response text
+after a configurable call threshold, to spoof/close a conversation turn.
+"""
+
 
 def print_security_warning(specific: str = "") -> None:
     """Print an authorization warning."""
