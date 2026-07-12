@@ -173,3 +173,21 @@ def test_parse_server_entries_malformed_config_returns_empty(tmp_path):
 
 def test_parse_server_entries_missing_file_returns_empty(tmp_path):
     assert discovery.parse_server_entries(tmp_path / "nope.json") == []
+
+
+def test_discovered_server_redacts_on_direct_construction_too():
+    """Redaction must not depend on going through parse_server_entries() --
+    a DiscoveredServer built any other way (e.g. reconstructed from a saved
+    document by a future caller) must still never carry a raw secret."""
+    server = discovery.DiscoveredServer(
+        name="creds",
+        client="Claude Desktop",
+        config_path="/tmp/config.json",
+        transport="stdio",
+        command="npx",
+        args=["--api-key=sk-live-realsecretvalue999"],
+        url="https://user:hunter2@example.com/mcp",
+    )
+    assert "sk-live-realsecretvalue999" not in server.args
+    assert "--api-key=<redacted>" in server.args
+    assert "hunter2" not in server.url

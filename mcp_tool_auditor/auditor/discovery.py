@@ -156,10 +156,14 @@ def _origin_guess(command: str, args: list[str]) -> tuple[str, str]:
 class DiscoveredServer:
     """One MCP server entry parsed from a client config, WITHOUT execution.
 
-    Every string field here has already been through redaction at parse time
-    -- `env_names` only ever holds keys (values are never read at all, not
-    just filtered out after the fact), and `command`/`args`/`url` have had
-    any secret-looking value replaced with `<redacted>`.
+    Redaction is enforced twice, deliberately: `_parse_stdio_entry`/
+    `_parse_url_entry` redact before constructing this, AND `__post_init__`
+    redacts again here unconditionally -- idempotent on already-redacted
+    text (`<redacted>` never matches the secret-key pattern), but a real
+    second guard for any future caller that builds a DiscoveredServer some
+    other way (e.g. reconstructing one from a saved document) without going
+    through the parser. `env_names` only ever holds keys in the first place
+    -- values are never read at all, not just filtered out after the fact.
     """
 
     name: str
@@ -172,6 +176,11 @@ class DiscoveredServer:
     url: str = ""
     origin_guess: str = "unknown"
     origin_reason: str = ""
+
+    def __post_init__(self) -> None:
+        self.command = _redact_url(self.command)
+        self.args = _redact_args(self.args)
+        self.url = _redact_url(self.url)
 
 
 def _parse_stdio_entry(
