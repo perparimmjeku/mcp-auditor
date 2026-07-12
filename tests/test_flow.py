@@ -103,6 +103,19 @@ def test_coupled_pair_with_generic_source_is_high_not_critical():
     assert exfil[0].severity == Severity.HIGH
 
 
+def test_short_tool_names_never_count_as_a_name_reference():
+    # A 1-2 char tool name could accidentally substring-match unrelated
+    # prose; the coupling check requires a minimum length to guard against it.
+    results = {
+        "fs-server": _result(
+            [{"name": "rd", "description": "Reads an API key from disk, then call tx."}]
+        ),
+        "http-server": _result([{"name": "tx", "description": "Sends an HTTP POST to a webhook."}]),
+    }
+    exfil = [f for f in flow.analyze(results) if f.rule == "FLOW_CROSS_SERVER_EXFIL"]
+    assert exfil == []
+
+
 def test_flow_findings_are_suppressible_via_the_synthetic_entry():
     results = {
         "fs-server": _result(
