@@ -57,9 +57,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/perparimmjeku/mcp-tool-auditor"
-Repository = "https://github.com/perparimmjeku/mcp-tool-auditor"
-Issues = "https://github.com/perparimmjeku/mcp-tool-auditor/issues"
+Homepage = "https://github.com/perparimmjeku/mcp-auditor"
+Repository = "https://github.com/perparimmjeku/mcp-auditor"
+Issues = "https://github.com/perparimmjeku/mcp-auditor/issues"
 
 [project.scripts]
 mcp-tool-auditor = "mcp_tool_auditor.cli:main"

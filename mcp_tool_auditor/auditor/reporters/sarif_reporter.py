@@ -34,7 +34,7 @@ _SCHEMA = (
 # RULES.md has no stable per-rule anchors (rule ids are table rows, not
 # headers), so every rule points at the same catalog page rather than a
 # rule-specific fragment.
-_RULES_DOC_URI = "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md"
+_RULES_DOC_URI = "https://github.com/perparimmjeku/mcp-auditor/blob/main/docs/RULES.md"
 
 
 class SarifReporter:
@@ -124,7 +124,7 @@ class SarifReporter:
                         "driver": {
                             "name": "mcp-tool-auditor",
                             "version": __version__,
-                            "informationUri": "https://github.com/perparimmjeku/mcp-tool-auditor",
+                            "informationUri": "https://github.com/perparimmjeku/mcp-auditor",
                             "rules": sorted_rules,
                         }
                     },
