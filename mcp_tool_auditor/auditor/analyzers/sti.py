@@ -316,7 +316,7 @@ _TIER_DESCRIPTION = {
 }
 
 
-def _safe_snippet(raw: str, max_len: int = 60) -> str:
+def safe_snippet(raw: str, max_len: int = 60) -> str:
     """Escape control/invisible characters so a finding message is safe to
 
     render in a terminal or markdown viewer -- an STI payload is exactly
@@ -366,7 +366,7 @@ class STIAnalyzer:
             rule=rule_for_kind(_TIER_RULE[match.tier], kind),
             message=(
                 f"{label_for_kind(kind)} '{tool_name}': {_TIER_DESCRIPTION[match.tier]} "
-                f"({match.family}) at {offset_note}: {_safe_snippet(match.raw_match)}"
+                f"({match.family}) at {offset_note}: {safe_snippet(match.raw_match)}"
             ),
             owasp_id="MCP03",
             attack_type="special_token_injection",

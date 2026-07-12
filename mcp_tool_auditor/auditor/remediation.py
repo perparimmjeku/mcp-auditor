@@ -19,6 +19,19 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "untrusted data, never as instructions; strip or sandbox responses before the agent acts.",
     ),
     (
+        "BEHAV_STI_TRANSITION",
+        "The tool returned benign output on early calls, then emitted a special chat-template "
+        "control token later — an STI time-bomb that dodges pre-connect/definition-only review. "
+        "Quarantine the server; never pass raw tool output into a prompt template without "
+        "stripping/escaping control-token-shaped text first.",
+    ),
+    (
+        "BEHAV_STI_OUTPUT",
+        "A tool response contains a special chat-template control token (or an obfuscated form "
+        "of one) from the first call. Treat tool output as untrusted data: strip/escape "
+        "control-token-shaped substrings before any code re-inserts the response into a prompt.",
+    ),
+    (
         "BEHAV_RESPONSE_DIVERGENCE",
         "Identical inputs produced different responses. Confirm the non-determinism is expected "
         "(e.g. live data) and not a server quietly changing behavior between calls.",
