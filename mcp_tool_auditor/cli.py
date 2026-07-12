@@ -7,12 +7,14 @@ OWASP MCP Top 10 Compliant | Defensive + Offensive tooling
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import time
 
-from .auditor import discovery, inventory, remediation, suppressions
+from . import __version__
+from .auditor import discovery, inventory, remediation, report_signing, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
 from .auditor.analyzers.sti_tokenizer import parse_tokenizer_spec
@@ -72,6 +74,16 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         "--output",
         "-o",
         help="Write output to file instead of stdout",
+    )
+    parser.add_argument(
+        "--sign",
+        action="store_true",
+        help="Also write a signed chain-of-custody sidecar (<output>.sig) binding the "
+        "findings, engagement scope, and tool version -- not the report bytes, so "
+        "the report stays freely editable/reformattable without invalidating the "
+        "signature. Requires --output. Verify with 'verify-report <output>.sig'. Key: "
+        "MCP_TOOL_AUDITOR_REPORT_KEY (out-of-band, e.g. a CI secret) or an "
+        "auto-generated local key file.",
     )
     parser.add_argument(
         "--severity",
@@ -527,6 +539,17 @@ Examples:
         help="Acknowledge the --probe authorization warning non-interactively",
     )
 
+    # --- verify-report ---
+    verify_parser = subparsers.add_parser(
+        "verify-report",
+        help="Verify a signed report's chain-of-custody sidecar (VALID/TAMPERED/INVALID)",
+    )
+    verify_parser.add_argument(
+        "sidecar",
+        type=ArgparseValidation.file,
+        help="Path to the .sig sidecar written by --sign (e.g. report.md.sig)",
+    )
+
     return parser
 
 
@@ -588,6 +611,8 @@ def main() -> None:
             _handle_source_scan(args, config, engagement=engagement)
         elif args.command == "inventory":
             _handle_inventory(args, scanner, config, engagement=engagement)
+        elif args.command == "verify-report":
+            _handle_verify_report(args)
         else:
             parser.print_help()
     except KeyboardInterrupt:
@@ -656,13 +681,7 @@ def _handle_scan(
 
         output_format = args.format or config.output_format
         output = _render_report(results, output_format, engagement=engagement)
-
-        if args.output:
-            output_path = validate_output_path(args.output)
-            output_path.write_text(output, encoding="utf-8")
-            print(f"[+] Report written to {output_path}")
-        else:
-            print(output)
+        _write_report_output(args, output, results, engagement=engagement)
 
         metrics_collector.record(_metrics_from_results(results, time.time() - start, True))
         logger.info("Scan completed in %.2fs", time.time() - start)
@@ -772,6 +791,42 @@ def _render_report(
     if output_format == "pentest":
         return PentestReporter.generate(results, engagement=engagement, fixed=fixed)
     return MarkdownReporter.generate(results)
+
+
+def _write_report_output(
+    args,
+    output: str,
+    results,
+    engagement=None,
+    fixed: list[tuple[str, Finding]] | None = None,
+) -> None:
+    """Write `output` to --output (or stdout), and -- if --sign was passed --
+    a chain-of-custody sidecar (<output>.sig) alongside it.
+
+    The sidecar signs a canonical payload built straight from `results`/
+    `engagement`, never `output` itself: reformatting the human-readable
+    report afterward doesn't touch the signature at all. --sign requires
+    --output -- a sidecar has nowhere to live for a stdout-only report.
+    """
+    if getattr(args, "sign", False) and not args.output:
+        raise ValidationError("--sign requires --output (the sidecar needs a file to pair with)")
+
+    if args.output:
+        output_path = validate_output_path(args.output)
+        output_path.write_text(output, encoding="utf-8")
+        print(f"[+] Report written to {output_path}")
+    else:
+        print(output)
+
+    if getattr(args, "sign", False):
+        sidecar = report_signing.sign_report(
+            results, __version__, engagement=engagement, fixed=fixed
+        )
+        sig_path = output_path.with_name(output_path.name + ".sig")
+        sig_path.write_text(json.dumps(sidecar, indent=2, sort_keys=True), encoding="utf-8")
+        print(
+            f"[+] Signed chain-of-custody sidecar written to {sig_path} (key_id: {sidecar['key_id']})"
+        )
 
 
 def _apply_fail_on(results, fail_on: str | None) -> None:
@@ -892,12 +947,7 @@ def _handle_retest(args, scanner: MCPScanner, config, engagement=None) -> None:
 
     output_format = args.format or config.output_format
     output = _render_report(results, output_format, engagement=engagement, fixed=fixed)
-    if args.output:
-        output_path = validate_output_path(args.output)
-        output_path.write_text(output, encoding="utf-8")
-        print(f"[+] Report written to {output_path}")
-    else:
-        print(output)
+    _write_report_output(args, output, results, engagement=engagement, fixed=fixed)
 
     still_present = sum(
         1 for r in results.values() for f in r.findings if f.retest_status == "STILL_PRESENT"
@@ -1021,12 +1071,7 @@ def _handle_source_scan(args, config, engagement=None) -> None:
     results = _apply_triage(results, args)
     output_format = args.format or config.output_format
     output = _render_report(results, output_format, engagement=engagement)
-    if args.output:
-        output_path = validate_output_path(args.output)
-        output_path.write_text(output, encoding="utf-8")
-        print(f"[+] Report written to {output_path}")
-    else:
-        print(output)
+    _write_report_output(args, output, results, engagement=engagement)
     _apply_fail_on(results, getattr(args, "fail_on", None))
 
 
@@ -1115,6 +1160,31 @@ def _handle_explain(args) -> None:
     print(f"Rule: {rule}\n")
     print("Remediation:")
     print(f"  {remediation.get_remediation(rule)}")
+
+
+def _handle_verify_report(args) -> None:
+    sidecar = validate_json_file(args.sidecar)
+    if not isinstance(sidecar, dict):
+        raise ValidationError(
+            f"'{args.sidecar}' is not a valid signature sidecar (not a JSON object)"
+        )
+
+    result = report_signing.verify_report(sidecar)
+    status = result["status"]
+    print(f"Status: {status}")
+    print(f"Tool version (signed): {result.get('tool_version')}")
+    print(f"Signed at: {result.get('signed_at')}")
+    print(f"Key id (signature):  {result.get('key_id')}")
+    print(f"Key id (verifying):  {result.get('verifying_key_id')}")
+    if result.get("reason"):
+        print(f"Reason: {result['reason']}")
+
+    if status == "VALID":
+        payload = sidecar.get("payload", {})
+        print(f"Findings attested: {len(payload.get('findings', []))}")
+        print(f"Targets attested: {', '.join(payload.get('targets', [])) or '(none)'}")
+    else:
+        sys.exit(2)
 
 
 def _handle_register(args, scanner: MCPScanner, engagement=None) -> None:
