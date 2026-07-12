@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **74 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **61 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -47,26 +47,20 @@ _Suspicious params, enum/default/required injection_
 | `FSP_DESC_INJECTION` | HIGH |
 | `FSP_ENUM_POISON` | HIGH |
 | `FSP_REQUIRED_LENGTH` | HIGH |
-| `FSP_ADDITIONAL_PARAM` | MEDIUM |
-| `FSP_COMMAND_PARAM` | MEDIUM |
-| `FSP_COMMENT_PARAM` | MEDIUM |
-| `FSP_CONTEXT_PARAM` | MEDIUM |
-| `FSP_DEFAULT_INJECTION` | MEDIUM |
-| `FSP_DIRECTIVE_PARAM` | MEDIUM |
-| `FSP_ENUM_INJECTION` | MEDIUM |
-| `FSP_EXTRA_PARAM` | MEDIUM |
-| `FSP_FEEDBACK_PARAM` | MEDIUM |
-| `FSP_INJECTION_PARAM` | MEDIUM |
-| `FSP_INSTRUCTION_PARAM` | MEDIUM |
-| `FSP_MISSING_REQUIRED` | MEDIUM |
-| `FSP_NOTE_PARAM` | MEDIUM |
-| `FSP_OVERRIDE_PARAM` | MEDIUM |
-| `FSP_PARAM_NAME` | MEDIUM |
-| `FSP_REMARK_PARAM` | MEDIUM |
-| `FSP_SIDENOTE` | MEDIUM |
-| `FSP_SYSTEM_PROMPT_PARAM` | MEDIUM |
 | `PROMPT_ARG_DESC_INJECTION` | HIGH |
+| `FSP_DEFAULT_INJECTION` | MEDIUM |
+| `FSP_ENUM_INJECTION` | MEDIUM |
+| `FSP_INJECTION_PARAM` | MEDIUM |
+| `FSP_MISSING_REQUIRED` | MEDIUM |
+| `FSP_PARAM_NAME` | MEDIUM |
 | `PROMPT_ARG_DESC_LONG` | LOW |
+
+`FSP_PARAM_NAME` fires for any suspicious parameter name (`sidenote`, `note`, `comment`,
+`remark`, `metadata`, `context`, `extra`, `additional`, `auxiliary` — see
+`SchemaAnalyzer.FSP_SUSPICIOUS_PARAM_NAMES`) and `FSP_INJECTION_PARAM` for any known
+prompt-injection vector name (`system_prompt`, `instructions`, `directive`, `command`,
+`override`, `priority`, `mode` — see `SchemaAnalyzer.PROMPT_INJECTION_PARAMS`); the
+specific matched name is in the finding's message, not a per-keyword rule id.
 
 _MCP prompts carry a flat `arguments` list, not a JSON Schema like tools, so
 `PROMPT_ARG_*` mirrors the description-injection/length checks above for that shape._
