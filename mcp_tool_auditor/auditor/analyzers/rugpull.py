@@ -3,9 +3,9 @@ import hmac
 import json
 import logging
 import os
-import secrets
 from typing import Any
 
+from .. import signing
 from ..models import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -55,31 +55,10 @@ class RugPullDetector:
 
     def _load_or_create_key(self) -> bytes:
         """Return the HMAC signing key: env override, else a local key file."""
-        env_key = os.environ.get(self.KEY_ENV_VAR)
-        if env_key:
-            return env_key.encode("utf-8")
-
-        os.makedirs(self._fp_dir, exist_ok=True)
-        key_path = os.path.join(self._fp_dir, self.KEY_FILENAME)
-        if os.path.exists(key_path):
-            with open(key_path, "rb") as f:
-                return f.read()
-
-        key = secrets.token_bytes(32)
-        try:
-            fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "wb") as f:
-                f.write(key)
-        except FileExistsError:
-            # Another process created it first (e.g. concurrent registers).
-            with open(key_path, "rb") as f:
-                key = f.read()
-        return key
+        return signing.load_or_create_key(self._fp_dir, self.KEY_FILENAME, self.KEY_ENV_VAR)
 
     def _sign(self, registry: dict[str, str]) -> str:
-        key = self._load_or_create_key()
-        payload = json.dumps(registry, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return hmac.new(key, payload, hashlib.sha256).hexdigest()
+        return signing.sign(self._load_or_create_key(), registry)
 
     def register(self, server_url: str, tools: list[dict[str, Any]]) -> str:
         """Register current tool fingerprints as the approved, signed baseline."""
