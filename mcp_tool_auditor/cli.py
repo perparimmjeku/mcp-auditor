@@ -118,6 +118,18 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
         "Injection (STI) payloads. Off by default: decoding is opt-in to bound cost and "
         "false positives even with the length-banded candidate regex.",
     )
+    parser.add_argument(
+        "--sti-tokenizer",
+        default=None,
+        metavar="SPEC",
+        dest="sti_tokenizer",
+        help="Comma list of real, offline tokenizers to additionally check STI matches "
+        "against (chatml, qwen, mistral, deepseek; llama3/gemma are recognized names "
+        "but have no offline-redistributable asset yet). Confirms a match against the "
+        "target's real vocabulary instead of just string shape, and can catch tokens "
+        "our registry doesn't list. Off by default; requires "
+        "'pip install mcp-tool-auditor[tokenizers]'.",
+    )
     if include_rugpull:
         parser.add_argument(
             "--check-rugpull",

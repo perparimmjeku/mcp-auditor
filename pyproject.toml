@@ -40,6 +40,9 @@ dynamic = ["version"]
 llm = [
     "anthropic>=0.40",
 ]
+tokenizers = [
+    "tokenizers>=0.15",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -50,6 +53,7 @@ dev = [
     "types-PyYAML",
     "build>=1.0",
     "anthropic>=0.40",
+    "tokenizers>=0.15",
 ]
 
 [project.urls]
@@ -67,7 +71,7 @@ version = { attr = "mcp_tool_auditor.__version__" }
 include = ["mcp_tool_auditor*"]
 
 [tool.setuptools.package-data]
-"mcp_tool_auditor.auditor" = ["signatures/*.yaml"]
+"mcp_tool_auditor.auditor" = ["signatures/*.yaml", "tokenizer_assets/*.json"]
 
 [tool.black]
 line-length = 100
