@@ -248,13 +248,23 @@ mcp-tool-auditor scan local
 ### Export SARIF and Explain Findings
 
 ```bash
-# SARIF for GitHub code-scanning / GitLab
+# SARIF for GitHub code-scanning / GitLab / DefectDojo ingestion
 mcp-tool-auditor scan import tools.json --format sarif -o results.sarif
 
 # Get remediation guidance for any finding rule
 mcp-tool-auditor explain BEHAV_ATPA_TRANSITION
 mcp-tool-auditor explain --list
 ```
+
+SARIF 2.1.0 output is deterministic — `driver.rules[]` sorted by rule id and
+`results[]` sorted by `(ruleId, tool_name, field, message)`, so re-scanning
+unchanged findings produces byte-identical output and diffs cleanly in CI. Each
+`reportingDescriptor` carries `helpUri` (links `docs/RULES.md`) alongside the existing
+remediation text, plus an empty `atlas_ids` placeholder in `properties` so a future
+MITRE ATLAS mapping can be added without a schema change. Each result's `properties`
+bag carries `owasp_id`, `attack_type`, `confidence`, and `retest_status` (present —
+`null` on a plain scan, set on `retest --format sarif`) so nothing from a `Finding` is
+lost in translation, and DefectDojo's generic SARIF importer picks all of it up.
 
 ### Source-Scan (Prompt-In-Shell-Out)
 
@@ -567,7 +577,7 @@ The authors assume no liability for misuse, unauthorized testing, or damages cau
 ```python
 """MCP Tool Auditor package."""
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __author__ = "Përparim Mjeku"
 __license__ = "MIT"
 ```

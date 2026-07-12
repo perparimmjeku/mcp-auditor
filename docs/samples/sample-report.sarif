@@ -6,39 +6,19 @@
       "tool": {
         "driver": {
           "name": "mcp-tool-auditor",
-          "version": "1.2.0",
+          "version": "1.6.0",
           "informationUri": "https://github.com/perparimmjeku/mcp-tool-auditor",
           "rules": [
             {
-              "id": "ST_OVERRIDE",
-              "name": "ST_OVERRIDE",
+              "id": "FSP_PARAM_NAME",
+              "name": "FSP_PARAM_NAME",
               "shortDescription": {
-                "text": "St Override"
+                "text": "Fsp Param Name"
               },
               "help": {
-                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
+                "text": "A schema field (parameter name, description, enum, default, or required entry) carries hidden instructions (Full-Schema Poisoning). Reject the tool and report it to the server author; do not expose the parameter to the agent."
               },
-              "defaultConfiguration": {
-                "level": "error"
-              },
-              "properties": {
-                "tags": [
-                  "security",
-                  "mcp",
-                  "MCP03"
-                ],
-                "security-severity": "8.0"
-              }
-            },
-            {
-              "id": "ST_READ_FILE",
-              "name": "ST_READ_FILE",
-              "shortDescription": {
-                "text": "St Read File"
-              },
-              "help": {
-                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
-              },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
               "defaultConfiguration": {
                 "level": "warning"
               },
@@ -48,28 +28,8 @@
                   "mcp",
                   "MCP03"
                 ],
-                "security-severity": "5.5"
-              }
-            },
-            {
-              "id": "HEUR_IMPERATIVE",
-              "name": "HEUR_IMPERATIVE",
-              "shortDescription": {
-                "text": "Heur Imperative"
-              },
-              "help": {
-                "text": "The description uses imperative/agency language that issues commands to the agent. Tool descriptions should describe function, not instruct the agent; review and reject if poisoned."
-              },
-              "defaultConfiguration": {
-                "level": "warning"
-              },
-              "properties": {
-                "tags": [
-                  "security",
-                  "mcp",
-                  "MCP03"
-                ],
-                "security-severity": "5.5"
+                "security-severity": "5.5",
+                "atlas_ids": []
               }
             },
             {
@@ -81,6 +41,7 @@
               "help": {
                 "text": "The description claims system/admin authority to coerce the agent. Tool descriptions must not assert authority; treat this as an attempted authority-spoofing attack."
               },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
               "defaultConfiguration": {
                 "level": "error"
               },
@@ -90,18 +51,20 @@
                   "mcp",
                   "MCP03"
                 ],
-                "security-severity": "8.0"
+                "security-severity": "8.0",
+                "atlas_ids": []
               }
             },
             {
-              "id": "FSP_PARAM_NAME",
-              "name": "FSP_PARAM_NAME",
+              "id": "HEUR_IMPERATIVE",
+              "name": "HEUR_IMPERATIVE",
               "shortDescription": {
-                "text": "Fsp Param Name"
+                "text": "Heur Imperative"
               },
               "help": {
-                "text": "A schema field (parameter name, description, enum, default, or required entry) carries hidden instructions (Full-Schema Poisoning). Reject the tool and report it to the server author; do not expose the parameter to the agent."
+                "text": "The description uses imperative/agency language that issues commands to the agent. Tool descriptions should describe function, not instruct the agent; review and reject if poisoned."
               },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
               "defaultConfiguration": {
                 "level": "warning"
               },
@@ -111,28 +74,8 @@
                   "mcp",
                   "MCP03"
                 ],
-                "security-severity": "5.5"
-              }
-            },
-            {
-              "id": "ST_CREDENTIAL",
-              "name": "ST_CREDENTIAL",
-              "shortDescription": {
-                "text": "St Credential"
-              },
-              "help": {
-                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
-              },
-              "defaultConfiguration": {
-                "level": "warning"
-              },
-              "properties": {
-                "tags": [
-                  "security",
-                  "mcp",
-                  "MCP02"
-                ],
-                "security-severity": "5.5"
+                "security-severity": "5.5",
+                "atlas_ids": []
               }
             },
             {
@@ -144,6 +87,7 @@
               "help": {
                 "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
               },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
               "defaultConfiguration": {
                 "level": "error"
               },
@@ -153,7 +97,31 @@
                   "mcp",
                   "MCP03"
                 ],
-                "security-severity": "8.0"
+                "security-severity": "8.0",
+                "atlas_ids": []
+              }
+            },
+            {
+              "id": "ST_CREDENTIAL",
+              "name": "ST_CREDENTIAL",
+              "shortDescription": {
+                "text": "St Credential"
+              },
+              "help": {
+                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
+              },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "mcp",
+                  "MCP02"
+                ],
+                "security-severity": "5.5",
+                "atlas_ids": []
               }
             },
             {
@@ -165,6 +133,7 @@
               "help": {
                 "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
               },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
               "defaultConfiguration": {
                 "level": "warning"
               },
@@ -174,113 +143,60 @@
                   "mcp",
                   "MCP03"
                 ],
-                "security-severity": "5.5"
+                "security-severity": "5.5",
+                "atlas_ids": []
+              }
+            },
+            {
+              "id": "ST_OVERRIDE",
+              "name": "ST_OVERRIDE",
+              "shortDescription": {
+                "text": "St Override"
+              },
+              "help": {
+                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
+              },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "mcp",
+                  "MCP03"
+                ],
+                "security-severity": "8.0",
+                "atlas_ids": []
+              }
+            },
+            {
+              "id": "ST_READ_FILE",
+              "name": "ST_READ_FILE",
+              "shortDescription": {
+                "text": "St Read File"
+              },
+              "help": {
+                "text": "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). Reject the tool and report it to the server author."
+              },
+              "helpUri": "https://github.com/perparimmjeku/mcp-tool-auditor/blob/main/docs/RULES.md",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "mcp",
+                  "MCP03"
+                ],
+                "security-severity": "5.5",
+                "atlas_ids": []
               }
             }
           ]
         }
       },
       "results": [
-        {
-          "ruleId": "ST_OVERRIDE",
-          "level": "error",
-          "message": {
-            "text": "Tool 'get_compliance_status': Attempting to supersede agent configuration."
-          },
-          "locations": [
-            {
-              "logicalLocations": [
-                {
-                  "name": "get_compliance_status",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
-                  "kind": "tool"
-                }
-              ]
-            }
-          ],
-          "properties": {
-            "owasp_id": "MCP03",
-            "attack_type": "tool_poisoning",
-            "tool_name": "get_compliance_status",
-            "field": null,
-            "confidence": "HIGH"
-          }
-        },
-        {
-          "ruleId": "ST_READ_FILE",
-          "level": "warning",
-          "message": {
-            "text": "Tool 'get_compliance_status': File read capability mentioned \u2014 potential sensitive data access."
-          },
-          "locations": [
-            {
-              "logicalLocations": [
-                {
-                  "name": "get_compliance_status",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
-                  "kind": "tool"
-                }
-              ]
-            }
-          ],
-          "properties": {
-            "owasp_id": "MCP03",
-            "attack_type": "sensitive_access",
-            "tool_name": "get_compliance_status",
-            "field": null,
-            "confidence": "HIGH"
-          }
-        },
-        {
-          "ruleId": "HEUR_IMPERATIVE",
-          "level": "warning",
-          "message": {
-            "text": "Tool 'get_compliance_status': 2 imperative/directive patterns \u2014 tool description issues commands to the agent."
-          },
-          "locations": [
-            {
-              "logicalLocations": [
-                {
-                  "name": "get_compliance_status",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
-                  "kind": "tool"
-                }
-              ]
-            }
-          ],
-          "properties": {
-            "owasp_id": "MCP03",
-            "attack_type": "tool_poisoning",
-            "tool_name": "get_compliance_status",
-            "field": null,
-            "confidence": "LOW"
-          }
-        },
-        {
-          "ruleId": "HEUR_AUTHORITY_SPOOF",
-          "level": "error",
-          "message": {
-            "text": "Tool 'get_compliance_status': 9 authority-claim patterns \u2014 tool may be spoofing system-level authority."
-          },
-          "locations": [
-            {
-              "logicalLocations": [
-                {
-                  "name": "get_compliance_status",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
-                  "kind": "tool"
-                }
-              ]
-            }
-          ],
-          "properties": {
-            "owasp_id": "MCP03",
-            "attack_type": "authority_spoofing",
-            "tool_name": "get_compliance_status",
-            "field": null,
-            "confidence": "MEDIUM"
-          }
-        },
         {
           "ruleId": "FSP_PARAM_NAME",
           "level": "warning",
@@ -303,32 +219,60 @@
             "attack_type": "full_schema_poisoning",
             "tool_name": "data_processor",
             "field": "inputSchema.properties.sidenote",
-            "confidence": "MEDIUM"
+            "confidence": "MEDIUM",
+            "retest_status": null
           }
         },
         {
-          "ruleId": "ST_CREDENTIAL",
-          "level": "warning",
+          "ruleId": "HEUR_AUTHORITY_SPOOF",
+          "level": "error",
           "message": {
-            "text": "Tool 'weather_service': AWS credential exposure risk."
+            "text": "Tool 'get_compliance_status': 9 authority-claim patterns \u2014 may be spoofing system-level authority."
           },
           "locations": [
             {
               "logicalLocations": [
                 {
-                  "name": "weather_service",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/weather_service",
+                  "name": "get_compliance_status",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
                   "kind": "tool"
                 }
               ]
             }
           ],
           "properties": {
-            "owasp_id": "MCP02",
-            "attack_type": "credential_exposure",
-            "tool_name": "weather_service",
+            "owasp_id": "MCP03",
+            "attack_type": "authority_spoofing",
+            "tool_name": "get_compliance_status",
             "field": null,
-            "confidence": "HIGH"
+            "confidence": "MEDIUM",
+            "retest_status": null
+          }
+        },
+        {
+          "ruleId": "HEUR_IMPERATIVE",
+          "level": "warning",
+          "message": {
+            "text": "Tool 'get_compliance_status': 2 imperative/directive patterns \u2014 description issues commands to the agent."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "get_compliance_status",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
+                  "kind": "tool"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "owasp_id": "MCP03",
+            "attack_type": "tool_poisoning",
+            "tool_name": "get_compliance_status",
+            "field": null,
+            "confidence": "LOW",
+            "retest_status": null
           }
         },
         {
@@ -353,32 +297,34 @@
             "attack_type": "tool_poisoning",
             "tool_name": "read_file",
             "field": null,
-            "confidence": "HIGH"
+            "confidence": "HIGH",
+            "retest_status": null
           }
         },
         {
-          "ruleId": "ST_READ_FILE",
+          "ruleId": "ST_CREDENTIAL",
           "level": "warning",
           "message": {
-            "text": "Tool 'read_file': File read capability mentioned \u2014 potential sensitive data access."
+            "text": "Tool 'weather_service': AWS credential exposure risk."
           },
           "locations": [
             {
               "logicalLocations": [
                 {
-                  "name": "read_file",
-                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/read_file",
+                  "name": "weather_service",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/weather_service",
                   "kind": "tool"
                 }
               ]
             }
           ],
           "properties": {
-            "owasp_id": "MCP03",
-            "attack_type": "sensitive_access",
-            "tool_name": "read_file",
+            "owasp_id": "MCP02",
+            "attack_type": "credential_exposure",
+            "tool_name": "weather_service",
             "field": null,
-            "confidence": "HIGH"
+            "confidence": "HIGH",
+            "retest_status": null
           }
         },
         {
@@ -403,7 +349,86 @@
             "attack_type": "data_exfiltration",
             "tool_name": "read_file",
             "field": null,
-            "confidence": "HIGH"
+            "confidence": "HIGH",
+            "retest_status": null
+          }
+        },
+        {
+          "ruleId": "ST_OVERRIDE",
+          "level": "error",
+          "message": {
+            "text": "Tool 'get_compliance_status': Attempting to supersede agent configuration."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "get_compliance_status",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
+                  "kind": "tool"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "owasp_id": "MCP03",
+            "attack_type": "tool_poisoning",
+            "tool_name": "get_compliance_status",
+            "field": null,
+            "confidence": "HIGH",
+            "retest_status": null
+          }
+        },
+        {
+          "ruleId": "ST_READ_FILE",
+          "level": "warning",
+          "message": {
+            "text": "Tool 'get_compliance_status': File read capability mentioned \u2014 potential sensitive data access."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "get_compliance_status",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/get_compliance_status",
+                  "kind": "tool"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "owasp_id": "MCP03",
+            "attack_type": "sensitive_access",
+            "tool_name": "get_compliance_status",
+            "field": null,
+            "confidence": "HIGH",
+            "retest_status": null
+          }
+        },
+        {
+          "ruleId": "ST_READ_FILE",
+          "level": "warning",
+          "message": {
+            "text": "Tool 'read_file': File read capability mentioned \u2014 potential sensitive data access."
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "read_file",
+                  "fullyQualifiedName": "tests/fixtures/poisoned_tools.json/read_file",
+                  "kind": "tool"
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "owasp_id": "MCP03",
+            "attack_type": "sensitive_access",
+            "tool_name": "read_file",
+            "field": null,
+            "confidence": "HIGH",
+            "retest_status": null
           }
         }
       ]

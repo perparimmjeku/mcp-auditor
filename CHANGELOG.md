@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-12
+
+### Fixed
+- **Non-deterministic SARIF output** — `driver.rules[]` and `results[]` followed
+  scan/insertion order, not a stable sort, so two identical re-scans could produce
+  byte-different SARIF and break clean CI diffing. Both are now sorted (rules by
+  id; results by `(ruleId, tool_name, field, message)`).
+
+### Added
+- **SARIF `helpUri`** on every `reportingDescriptor`, alongside the existing
+  remediation `help.text` — links `docs/RULES.md`.
+- **SARIF `atlas_ids` placeholder** (empty array) in rule `properties`, so a future
+  MITRE ATLAS mapping can be added without a schema/structure change.
+- **SARIF `retest_status` in result `properties`** — was silently dropped, so
+  `retest --format sarif` lost the Fixed/Still Present/New distinction on render.
+  Present (`null` on a plain scan) rather than absent, so consumers can rely on
+  the key existing.
+- Regenerated `docs/samples/sample-report.sarif` to reflect the above; confirmed
+  re-generating it twice produces byte-identical output.
+
 ## [1.5.0] - 2026-07-12
 
 ### Added
@@ -148,6 +168,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.6.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.6.0
 [1.5.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.5.0
 [1.4.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.4.0
 [1.3.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.3.0
