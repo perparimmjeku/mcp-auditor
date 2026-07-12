@@ -95,6 +95,16 @@ class SarifReporter:
                     }
                 )
 
+        sorted_rules = sorted(rules.values(), key=lambda r: r["id"])
+        sarif_results.sort(
+            key=lambda r: (
+                r["ruleId"],
+                r["properties"].get("tool_name") or "",
+                r["properties"].get("field") or "",
+                r["message"]["text"],
+            )
+        )
+
         doc = {
             "$schema": _SCHEMA,
             "version": "2.1.0",
@@ -105,7 +115,7 @@ class SarifReporter:
                             "name": "mcp-tool-auditor",
                             "version": __version__,
                             "informationUri": "https://github.com/perparimmjeku/mcp-tool-auditor",
-                            "rules": list(rules.values()),
+                            "rules": sorted_rules,
                         }
                     },
                     "results": sarif_results,
