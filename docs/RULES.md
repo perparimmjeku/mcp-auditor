@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **64 rules** across 12 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **65 rules** across 12 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -129,6 +129,7 @@ individually look clean_
 |---|---|
 | `FLOW_CROSS_SERVER_EXFIL` | HIGH |
 | `FLOW_SENSITIVE_SINK` | MEDIUM |
+| `INV_INFERRED_CHAIN` | MEDIUM |
 
 _Each tool across the whole scanned tool surface is tagged SOURCE (reads sensitive
 data), SINK (can egress data), or SENSITIVE_ACTION (destructive/state-changing).
@@ -140,6 +141,15 @@ on the specific, rarer case: one tool's description references the other tool by
 evidence the pairing is intentional — CRITICAL if the source is credential/secret-grade,
 HIGH otherwise. Same-server pairs are `COMPOSITION_CONFUSED_DEPUTY`'s job, not this
 family's — a pair only counts here if the two tools come from different servers._
+
+_`INV_INFERRED_CHAIN` is the `inventory` command's static (pre-`--probe`) tier: the same
+pairing/coupling logic as above, but run over a pseudo-tool synthesized from a server's
+launch config (command/args/env-var NAMES) rather than a real tool definition, because no
+tool has actually run yet. Capped at MEDIUM unconditionally — inference alone can never
+reach HIGH/CRITICAL, regardless of how coupled the pseudo-tool text looks — and its
+message always says "run `--probe` to confirm." Once `--probe` confirms both endpoint
+servers, the pairing is reported as a real `FLOW_SENSITIVE_SINK`/`FLOW_CROSS_SERVER_EXFIL`
+finding instead and `INV_INFERRED_CHAIN` is dropped for that pair — never both at once._
 
 ## Special Token Injection (STI)
 

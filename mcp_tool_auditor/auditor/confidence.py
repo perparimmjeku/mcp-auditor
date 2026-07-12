@@ -56,6 +56,14 @@ _KIND_PREFIXES = ("RES_", "PROMPT_", "INSTR_")
 # they don't fire as hard as a definitive signature match. Contrast
 # FLOW_CROSS_SERVER_EXFIL above, which requires a name cross-reference
 # between the two tools and is scored HIGH confidence accordingly.
+#
+# INV_INFERRED_CHAIN (inventory.py) is also intentionally absent from both
+# lists, for a stronger reason than the two above: it's not backed by real
+# tool text at all, only a guess synthesized from server launch config
+# (command/args/env-var names). It always sets confidence="MEDIUM" explicitly
+# on the Finding rather than relying on this fallthrough, as a second,
+# independent guard against it ever being promoted to HIGH by a future change
+# here -- an inferred chain must never carry more certainty than a guess.
 
 
 def confidence_for(rule: str) -> str:

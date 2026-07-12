@@ -103,6 +103,14 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "do not run them in the same agent session until the reference is explained.",
     ),
     (
+        "INV_INFERRED_CHAIN",
+        "This is an INFERRED cross-server chain -- a guess from server launch config "
+        "(command/args/env-var names), not confirmed by inspecting real tool definitions. "
+        "It is not yet a finding to remediate. Run 'mcp-tool-auditor inventory --probe' "
+        "(with authorization, in engagement scope) against both servers to confirm or rule "
+        "it out before taking any remediation action.",
+    ),
+    (
         "FLOW_SENSITIVE_SINK",
         "A sensitive-data-access tool on one MCP server and an outbound/egress-capable tool on "
         "a different server are both reachable in the same agent session -- a generic "
