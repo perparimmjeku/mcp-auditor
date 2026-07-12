@@ -37,6 +37,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `HF_HUB_OFFLINE=1` — any accidental network call would fail loudly and fast; all
     52 relevant tests still passed.
 
+### Fixed
+- Repo URLs updated for the GitHub rename `mcp-tool-auditor` → `mcp-auditor`: SARIF
+  output (`informationUri`, `helpUri`), `pyproject.toml` `[project.urls]`, and README
+  links/badges/clone instructions. The PyPI package name (`mcp-tool-auditor`) and CLI
+  command are unaffected — only the repo it points to changed.
+
 ## [1.7.0] - 2026-07-12
 
 ### Added
@@ -229,7 +235,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
-[1.8.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.8.0
+[1.8.0]: https://github.com/perparimmjeku/mcp-auditor/releases/tag/v1.8.0
 [1.7.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.7.0
 [1.6.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.6.0
 [1.5.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.5.0

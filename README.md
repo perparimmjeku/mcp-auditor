@@ -2,7 +2,7 @@
 
 **Scan MCP server tool definitions for poisoning, injection, and OWASP MCP Top 10 vulnerabilities.**
 
-[![CI](https://github.com/perparimmjeku/mcp-tool-auditor/actions/workflows/ci.yml/badge.svg)](https://github.com/perparimmjeku/mcp-tool-auditor/actions/workflows/ci.yml)
+[![CI](https://github.com/perparimmjeku/mcp-auditor/actions/workflows/ci.yml/badge.svg)](https://github.com/perparimmjeku/mcp-auditor/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mcp-tool-auditor)](https://pypi.org/project/mcp-tool-auditor/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -76,8 +76,8 @@ pip install 'mcp-tool-auditor[llm]'
 ### From source (development)
 
 ```bash
-git clone https://github.com/perparimmjeku/mcp-tool-auditor.git
-cd mcp-tool-auditor
+git clone https://github.com/perparimmjeku/mcp-auditor.git
+cd mcp-auditor
 python -m pip install -e ".[dev]"
 python -m pytest
 ```
@@ -391,7 +391,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan tool definitions
-        uses: perparimmjeku/mcp-tool-auditor@main
+        uses: perparimmjeku/mcp-auditor@main
         with:
           command: scan import tools.json --format sarif -o mcp.sarif --fail-on HIGH
 
@@ -403,7 +403,7 @@ jobs:
 ```
 
 > Until the package is on PyPI, point the action at the repo:
-> `with: { install-spec: "git+https://github.com/perparimmjeku/mcp-tool-auditor.git" }`
+> `with: { install-spec: "git+https://github.com/perparimmjeku/mcp-auditor.git" }`
 
 ### Plain CLI in any pipeline
 
