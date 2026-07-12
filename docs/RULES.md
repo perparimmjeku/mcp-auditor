@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **61 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **62 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -129,21 +129,28 @@ conversation-turn boundary of whatever prompt an MCP client builds from this tex
 |---|---|
 | `STI_EXACT` | HIGH |
 | `STI_NORMALIZED` | HIGH |
+| `STI_TOKENIZER` | HIGH |
 | `STI_STRUCTURAL` | MEDIUM |
 | `STI_ENCODED` | MEDIUM |
 
-Four matching tiers, most to least certain: **exact** (literal registry token, registry
+Five matching tiers, most to least certain: **exact** (literal registry token, registry
 in `signatures/sti_tokens.yaml` grouped by model family — ChatML/OpenAI/Qwen, Llama 2/
 Mistral, Llama 3, Gemma, Phi, Command R, DeepSeek, Anthropic-legacy); **normalized**
 (Unicode NFKC + homoglyph folding — fullwidth forms, Cyrillic/Greek lookalikes — plus
 zero-width/bidi stripping, then re-matched against the registry — obfuscation is *more*
-suspicious than the plain token, not less, so this stays HIGH); **structural** (unknown
-token with the right *shape*, e.g. `<|...|>`, catches uncatalogued model families);
-**encoded** (bounded-length base64/hex substring that decodes to a registry token —
-opt-in via `--sti-decode`, off by default, and the decoded bytes are only ever compared
-against the registry, never fed back into the structural regex). Also gets the
-`RES_`/`PROMPT_`/`INSTR_` surface prefix like the static/heuristic rules, and is scanned
-in tool call *output* via the behavioral rules below, not just definitions.
+suspicious than the plain token, not less, so this stays HIGH); **tokenizer** (opt-in via
+`--sti-tokenizer chatml|qwen|mistral|deepseek`, off by default — encodes the text with a
+*real*, vendored, offline tokenizer and checks whether a span resolves to an actual
+special/added-vocabulary token id under that specific model family, rather than being
+BPE-split; see "Tokenizer-aware STI" in the README for why this isn't just string
+matching in disguise, and what it catches that the other tiers can't); **structural**
+(unknown token with the right *shape*, e.g. `<|...|>`, catches uncatalogued model
+families); **encoded** (bounded-length base64/hex substring that decodes to a registry
+token — opt-in via `--sti-decode`, off by default, and the decoded bytes are only ever
+compared against the registry, never fed back into the structural regex). All five get
+the `RES_`/`PROMPT_`/`INSTR_` surface prefix like the static/heuristic rules; the string
+tiers (not yet `--sti-tokenizer`) also run against tool call *output* via the behavioral
+rules below, not just definitions.
 
 ## LLM semantic judge (opt-in)
 

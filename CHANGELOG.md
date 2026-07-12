@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-12
+
+### Added
+- **Tokenizer-aware STI detection (`--sti-tokenizer`, optional)** — a fifth STI tier
+  that answers a stronger question than the existing four string-based tiers: will
+  this string actually be parsed as a special token by the tokenizer a target
+  deployment runs, not just "does it look like a known token." Backed by real, vendored,
+  offline `tokenizer.json` assets (never a synthetic tokenizer seeded with our own
+  registry strings, which would only ever confirm what string matching already
+  catches) — loaded via `Tokenizer.from_str()` + `importlib.resources`, never
+  `Tokenizer.from_pretrained()`, no network call at scan time or anywhere else.
+  - Launch scope: `chatml`/`qwen` (Qwen3, Apache 2.0), `mistral` (Apache 2.0),
+    `deepseek` (DeepSeek-R1, MIT). `llama3`/`gemma` deferred — no redistributable
+    offline asset found (Meta's Llama Community License and Gemma's Terms of Use both
+    require attribution/notice machinery incompatible with a silent `pip install`);
+    requesting them prints a clear message rather than silently doing nothing.
+  - New `[tokenizers]` extra (`tokenizers>=0.15`); without it, `--sti-tokenizer` warns
+    with an install hint and the four string tiers still run — never crashes, never
+    disables anything else. Per explicit decision, the vendored assets (~21 MB) ship
+    in the main wheel unconditionally rather than a separate companion package.
+  - Confirm/diverge/novel interaction with the string tiers: a string-tier match a
+    real tokenizer confirms is upgraded to one `STI_TOKENIZER` finding (HIGH
+    confidence); a match the tokenizer does *not* confirm is left completely
+    unchanged (verified end-to-end: `[INST]`/`[/INST]` are Llama-2-style prompt
+    convention, not actual special tokens in Mistral's real tokenizer, so
+    `--sti-tokenizer mistral` correctly leaves them as plain `STI_EXACT` rather than
+    hiding the divergence); a token the string tiers never catalogued at all but the
+    real tokenizer resolves as special is added as a new, standalone finding.
+  - Verified network-free by construction, not just assumption: ran the relevant test
+    suite with `HTTP_PROXY`/`HTTPS_PROXY` pointed at a closed port plus
+    `HF_HUB_OFFLINE=1` — any accidental network call would fail loudly and fast; all
+    52 relevant tests still passed.
+
 ## [1.7.0] - 2026-07-12
 
 ### Added
@@ -196,6 +229,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.8.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.8.0
 [1.7.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.7.0
 [1.6.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.6.0
 [1.5.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.5.0

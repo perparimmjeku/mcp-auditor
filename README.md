@@ -26,7 +26,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | Heuristic Analysis | Imperative language scoring, authority spoofing, Unicode hidden characters, and excessive agency claims |
 | Multi-Surface Scanning | The same signature/heuristic engine also runs on `resources`, `prompts`, and the server's `initialize` `instructions` string — not just tool descriptions |
 | Schema Anomaly Detection | Full-Schema Poisoning (FSP), sidenote parameter injection, enum injection, poisoned defaults, and required-array abuse |
-| Special Token Injection (STI) | Chat-template control tokens (`<\|im_start\|>`, `[INST]`, DeepSeek's fullwidth `<｜User｜>`, ...) via exact/Unicode-normalized/structural/encoded matching — in definitions *and* tool call output |
+| Special Token Injection (STI) | Chat-template control tokens (`<\|im_start\|>`, `[INST]`, DeepSeek's fullwidth `<｜User｜>`, ...) via exact/Unicode-normalized/structural/encoded matching, plus an optional real-tokenizer-backed tier — in definitions *and* tool call output |
 | Cross-Tool Composition Risk | Flags a server exposing both a sensitive-data-access tool and an egress-capable tool — individually benign, chainable into exfiltration |
 | Rug-Pull Detection | HMAC-signed SHA-256 schema fingerprinting; `check` detects both unexpected tool changes *and* tampered baseline files |
 | Behavioral / ATPA Detection | Calls tools and inspects responses for the benign→malicious time-bomb signature, output injection, and exfil instructions |
@@ -321,6 +321,48 @@ that legitimately documents a token (e.g. a Llama-2 prompt-formatting helper men
 `[INST]`) still produces a finding — detection can't tell intent from text alone — but it's
 suppressible like any other rule (`--suppress STI_EXACT` or a suppressions file entry).
 
+### Tokenizer-Aware STI (optional)
+
+The tiers above answer "does this text *look like* a known control token?" by string
+matching. `--sti-tokenizer` answers a stronger question: **will this string actually be
+parsed as a special token by the tokenizer a target deployment runs**, rather than being
+split into ordinary byte-pair pieces? That's deployment-relative — `<|im_start|>` is one
+reserved token under ChatML/Qwen and inert plaintext under a tokenizer that's never heard
+of it — and it requires a *real* tokenizer's real vocabulary to answer; no amount of
+string-matching against our own token registry can (seeding a tokenizer with our own
+strings and checking they round-trip would only ever confirm what the string tiers
+already catch).
+
+```bash
+pip install 'mcp-tool-auditor[tokenizers]'
+mcp-tool-auditor scan url http://localhost:8080/mcp --sti-tokenizer chatml,mistral
+```
+
+`--sti-tokenizer` takes a comma list of target families: `chatml`, `qwen` (alias for the
+same ChatML-family tokenizer), `mistral`, `deepseek`. Each resolves to a real, offline,
+license-verified `tokenizer.json` vendored in the package (see
+`tokenizer_assets/THIRD_PARTY_NOTICES.md` for source/license per file) — loaded via
+`Tokenizer.from_str()` and `importlib.resources`, **never** `Tokenizer.from_pretrained()`,
+**never** a network call, at scan time or anywhere else. `llama3` and `gemma` are
+recognized names with no offline-redistributable asset yet (Meta's Llama Community
+License and Gemma's Terms of Use both require attribution/notice machinery incompatible
+with a silent `pip install`) — requesting them prints a clear message and the four string
+tiers still cover that family's known tokens. Without the `[tokenizers]` extra installed,
+`--sti-tokenizer` does the same: warns with an install hint, never crashes, never disables
+anything else.
+
+What confirmation actually changes: a string-tier match that a real target tokenizer
+resolves to an actual special/added-vocabulary token id is upgraded to one `STI_TOKENIZER`
+finding (HIGH confidence — a confirmed resolution against the real target is the strongest
+signal this scanner has). A string-tier match the tokenizer does **not** confirm is left
+completely unchanged — that divergence is itself signal, not something to hide. Concretely:
+`[INST]`/`[/INST]` are Llama-2-style prompt-template convention, not tokens Mistral's real
+tokenizer treats specially — `--sti-tokenizer mistral` correctly leaves them as plain
+`STI_EXACT`, while `--sti-tokenizer chatml` in the same scan upgrades real ChatML control
+tokens to `STI_TOKENIZER`. The tier can also catch tokens the string registry has never
+heard of: it encodes the *entire* text and checks every resulting token id against the
+target's real added-vocabulary set, not just our own regex/registry candidates.
+
 ### Generate Offensive Test Servers
 
 ```bash
@@ -402,7 +444,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 61 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 62 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -475,12 +517,19 @@ mcp-tool-auditor/
 │   │   │   ├── composition.py
 │   │   │   ├── llm_judge.py
 │   │   │   ├── sti.py
+│   │   │   ├── sti_tokenizer.py
 │   │   │   ├── surface.py
 │   │   │   └── patterns.py
 │   │   ├── signatures/
 │   │   │   ├── __init__.py
 │   │   │   ├── descriptions.yaml
 │   │   │   └── sti_tokens.yaml
+│   │   ├── tokenizer_assets/
+│   │   │   ├── __init__.py
+│   │   │   ├── THIRD_PARTY_NOTICES.md
+│   │   │   ├── chatml_qwen.tokenizer.json
+│   │   │   ├── mistral.tokenizer.json
+│   │   │   └── deepseek.tokenizer.json
 │   │   └── reporters/
 │   │       ├── __init__.py
 │   │       ├── json_reporter.py
@@ -516,6 +565,7 @@ mcp-tool-auditor/
 │   ├── test_sti_analyzer.py
 │   ├── test_sti_behavioral.py
 │   ├── test_sti_offensive.py
+│   ├── test_sti_tokenizer.py
 │   ├── test_surface_scanning.py
 │   ├── test_watch.py
 │   └── fixtures/
@@ -593,7 +643,7 @@ The authors assume no liability for misuse, unauthorized testing, or damages cau
 ```python
 """MCP Tool Auditor package."""
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 __author__ = "Përparim Mjeku"
 __license__ = "MIT"
 ```
