@@ -2,12 +2,13 @@ import json
 from typing import Any
 
 from ... import __version__
-from ..models import ScanResult
+from ..models import CROSS_SERVER_KEY, ScanResult
 
 
 class JSONReporter:
     @staticmethod
     def generate(results: dict[str, ScanResult]) -> str:
+        server_count = sum(1 for name in results if name != CROSS_SERVER_KEY)
         output: dict[str, Any] = {
             "scan_metadata": {
                 "tool": "mcp-tool-auditor",
@@ -15,7 +16,7 @@ class JSONReporter:
                 "owasp_version": "OWASP MCP Top 10 (2025)",
             },
             "summary": {
-                "total_servers": len(results),
+                "total_servers": server_count,
                 "total_tools": sum(r.tools_scanned for r in results.values()),
                 "total_findings": sum(len(r.findings) for r in results.values()),
                 "by_severity": {},

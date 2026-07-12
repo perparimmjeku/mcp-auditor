@@ -16,7 +16,7 @@ from .auditor import discovery, remediation, suppressions
 from .auditor.analyzers.behavioral import BehavioralAnalyzer, CallResult
 from .auditor.analyzers.rugpull import RugPullDetector
 from .auditor.analyzers.sti_tokenizer import parse_tokenizer_spec
-from .auditor.models import SEVERITY_LEVELS, Finding, ScanResult, Severity
+from .auditor.models import CROSS_SERVER_KEY, SEVERITY_LEVELS, Finding, ScanResult, Severity
 from .auditor.reporters.json_reporter import JSONReporter
 from .auditor.reporters.markdown_reporter import MarkdownReporter
 from .auditor.reporters.pentest_reporter import PentestReporter
@@ -755,6 +755,8 @@ def _finding_from_dict(data: dict) -> Finding:
         line=data.get("line"),
         confidence=data.get("confidence"),
         retest_status="FIXED",
+        related_tool=data.get("related_tool"),
+        related_server=data.get("related_server"),
     )
 
 
@@ -852,7 +854,7 @@ def _metrics_from_results(results, duration: float, success: bool) -> ScanMetric
         findings_total=findings_total,
         findings_by_severity=severity_counts,
         findings_by_owasp=owasp_counts,
-        server_count=len(results),
+        server_count=sum(1 for name in results if name != CROSS_SERVER_KEY),
         success=success,
     )
 

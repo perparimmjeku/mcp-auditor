@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from ... import __version__
-from ..models import ScanResult, Severity
+from ..models import CROSS_SERVER_KEY, ScanResult, Severity
 
 
 class MarkdownReporter:
@@ -42,7 +42,8 @@ class MarkdownReporter:
         lines.append("")
         lines.append("| Metric | Value |")
         lines.append("|--------|-------|")
-        lines.append(f"| Servers Scanned | {len(results)} |")
+        server_count = sum(1 for name in results if name != CROSS_SERVER_KEY)
+        lines.append(f"| Servers Scanned | {server_count} |")
         lines.append(f"| Tools Scanned | {sum(r.tools_scanned for r in results.values())} |")
         lines.append(f"| Total Findings | {total_findings} |")
         lines.append("")
@@ -83,9 +84,17 @@ class MarkdownReporter:
         # Per-server results
         for server_name, scan_result in results.items():
             lines.append("---")
-            lines.append(f"## Server: `{server_name}`")
-            lines.append("")
-            lines.append(f"- **Tools Scanned:** {scan_result.tools_scanned}")
+            if server_name == CROSS_SERVER_KEY:
+                lines.append("## Cross-Server Toxic-Flow Findings")
+                lines.append("")
+                lines.append(
+                    "_Findings below implicate a tool pair on two different servers — see "
+                    "each finding's message for both endpoints._"
+                )
+            else:
+                lines.append(f"## Server: `{server_name}`")
+                lines.append("")
+                lines.append(f"- **Tools Scanned:** {scan_result.tools_scanned}")
             lines.append(f"- **Findings:** {len(scan_result.findings)}")
             lines.append("")
 

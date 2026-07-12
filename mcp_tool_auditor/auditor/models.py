@@ -21,6 +21,15 @@ SEVERITY_LEVELS = {
     Severity.INFO: 4,
 }
 
+# Every other finding's origin is implicit: it lives inside exactly one
+# ScanResult, nested under exactly one key in the top-level `results` dict.
+# A cross-server toxic-flow finding implicates two servers at once and
+# doesn't belong to either one, so it's collected under this synthetic key
+# instead. Reporters/suppressions/metrics that iterate `results` generically
+# still work unchanged; code that counts "servers scanned" must exclude it
+# explicitly (see analyzers/flow.py and the reporters).
+CROSS_SERVER_KEY = "__cross_server__"
+
 
 @dataclass
 class Finding:
@@ -39,6 +48,12 @@ class Finding:
     # Set only by `retest` (STILL_PRESENT/NEW on current findings; FIXED on
     # findings from the baseline that no longer reproduce). None for a plain scan.
     retest_status: str | None = None
+    # Second endpoint of a multi-origin finding (currently: cross-server
+    # toxic-flow only). `tool_name` carries the first/primary tool as usual;
+    # these name the other side of the pair. None for every single-origin
+    # finding type -- purely additive, backward compatible.
+    related_tool: str | None = None
+    related_server: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize and validate finding fields."""
@@ -70,6 +85,8 @@ class Finding:
             "line": self.line,
             "confidence": self.confidence,
             "retest_status": self.retest_status,
+            "related_tool": self.related_tool,
+            "related_server": self.related_server,
         }
 
 
