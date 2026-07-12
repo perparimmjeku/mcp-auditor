@@ -53,20 +53,37 @@ The project also includes authorized offensive tooling for penetration testers a
 
 ## Installation
 
-### Install from GitHub
+### From PyPI (recommended)
+
+```bash
+pip install mcp-tool-auditor
+```
+
+Or run it without installing anything into your environment, via [uv](https://docs.astral.sh/uv/):
+
+```bash
+uvx mcp-tool-auditor --help
+```
+
+The default install is offline and needs no API key or token — it's `pyyaml` and
+`requests`, nothing else. The optional LLM semantic judge (`--llm-judge`) is a separate
+extra so it doesn't pull in an API client or require credentials for everyone:
+
+```bash
+pip install 'mcp-tool-auditor[llm]'
+```
+
+### From source (development)
 
 ```bash
 git clone https://github.com/perparimmjeku/mcp-tool-auditor.git
 cd mcp-tool-auditor
-pip install -e .
-```
-
-### Development
-
-```bash
 python -m pip install -e ".[dev]"
 python -m pytest
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow and
+[RELEASING.md](RELEASING.md) for how versions get published to PyPI.
 
 ---
 
