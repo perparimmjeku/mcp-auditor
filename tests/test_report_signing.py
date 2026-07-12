@@ -179,6 +179,62 @@ def test_sign_report_is_reproducible_modulo_timestamp(monkeypatch):
     assert "signed_at" in sidecar_1 and "signed_at" in sidecar_2
 
 
+def test_retest_payload_includes_fixed_findings_sorted(monkeypatch):
+    monkeypatch.setenv("MCP_TOOL_AUDITOR_REPORT_KEY", "test-key-for-signing")
+    fixed_b = (
+        "server-b",
+        Finding(
+            severity=Severity.HIGH,
+            rule="ST_BYPASS",
+            message="fixed-b",
+            owasp_id="MCP01",
+            tool_name="tool_b",
+        ),
+    )
+    fixed_a = (
+        "server-a",
+        Finding(
+            severity=Severity.MEDIUM,
+            rule="HEUR_AGENCY",
+            message="fixed-a",
+            owasp_id="MCP02",
+            tool_name="tool_a",
+        ),
+    )
+    sidecar = report_signing.sign_report(
+        _results(), "9.9.9", engagement=_engagement(), fixed=[fixed_b, fixed_a]
+    )
+    payload = sidecar["payload"]
+    assert payload["is_retest"] is True
+    assert [f["server"] for f in payload["fixed_findings"]] == ["server-a", "server-b"]
+    assert payload["fixed_findings"][0]["rule"] == "HEUR_AGENCY"
+
+    # Verifies cleanly too -- the fixed_findings block is part of what's signed.
+    result = report_signing.verify_report(sidecar)
+    assert result["status"] == "VALID"
+
+
+def test_retest_payload_tampering_fixed_findings_is_tampered(monkeypatch):
+    monkeypatch.setenv("MCP_TOOL_AUDITOR_REPORT_KEY", "test-key-for-signing")
+    fixed = [
+        (
+            "server-a",
+            Finding(
+                severity=Severity.HIGH,
+                rule="ST_BYPASS",
+                message="fixed-a",
+                owasp_id="MCP01",
+                tool_name="tool_a",
+            ),
+        )
+    ]
+    sidecar = report_signing.sign_report(_results(), "9.9.9", engagement=_engagement(), fixed=fixed)
+    tampered = copy.deepcopy(sidecar)
+    tampered["payload"]["fixed_findings"][0]["rule"] = "ST_IGNORE_PREVIOUS"
+    result = report_signing.verify_report(tampered)
+    assert result["status"] == "TAMPERED"
+
+
 def test_payload_without_engagement_has_empty_but_present_fields(monkeypatch):
     monkeypatch.setenv("MCP_TOOL_AUDITOR_REPORT_KEY", "test-key-for-signing")
     sidecar = report_signing.sign_report(_results(), "9.9.9", engagement=None)
