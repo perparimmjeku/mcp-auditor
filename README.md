@@ -480,7 +480,6 @@ mcp-tool-auditor/
 │   │   ├── signatures/
 │   │   │   ├── __init__.py
 │   │   │   ├── descriptions.yaml
-│   │   │   ├── parameters.yaml
 │   │   │   └── sti_tokens.yaml
 │   │   └── reporters/
 │   │       ├── __init__.py
