@@ -27,6 +27,7 @@ from ... import __version__
 from ..analyzers import capability
 from ..inventory import ORIGIN_CONFIRMED, ORIGIN_INFERRED, InventoryResult, ServerInventory
 from ..models import SEVERITY_LEVELS, Severity
+from .inventory_graph import generate_mermaid
 
 SEVERITY_EMOJI = {
     Severity.CRITICAL: "🔴",
@@ -160,6 +161,20 @@ class InventoryReporter:
                     f"- {SEVERITY_EMOJI.get(f.severity, '')} **{f.severity.value}** {badge} "
                     f"`{f.rule}` — {f.message}"
                 )
+        lines.append("")
+
+        lines.append("## Toxic-Flow Graph")
+        lines.append("")
+        lines.append(
+            "_Solid border/edge = confirmed via `--probe`; dashed = inferred from launch "
+            "config only. Edge color = severity (grey = generic/muted, orange = HIGH, red "
+            "= CRITICAL) -- a calm, mostly-uncolored graph is the expected, healthy result "
+            "on a benign host, not a bug._"
+        )
+        lines.append("")
+        lines.append("```mermaid")
+        lines.append(generate_mermaid(result))
+        lines.append("```")
         lines.append("")
 
         lines.append("## Servers")

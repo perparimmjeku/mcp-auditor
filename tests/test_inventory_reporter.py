@@ -136,6 +136,14 @@ def test_generate_markdown_no_chains_reads_as_low_risk():
     assert "low-risk" in md
 
 
+def test_generate_markdown_embeds_mermaid_graph():
+    result = _inferred_result()
+    md = InventoryReporter.generate_markdown(result)
+    assert "## Toxic-Flow Graph" in md
+    assert "```mermaid" in md
+    assert "flowchart LR" in md
+
+
 def test_generate_markdown_shows_blast_radius_per_server():
     result = _inferred_result()
     md = InventoryReporter.generate_markdown(result)
