@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-12
+
+### Added
+- **Special Token Injection (STI) detection** — a new analyzer catches text that spoofs
+  or closes a model's native chat-template control tokens (`<|im_start|>`, `[INST]`,
+  `<|start_header_id|>`, DeepSeek's fullwidth `<｜User｜>`, and more) to hijack the
+  conversation-turn boundary of whatever prompt an MCP client builds from tool/resource/
+  prompt/instructions text.
+  - Token registry as data (`signatures/sti_tokens.yaml`), grouped by model family
+    (ChatML/OpenAI/Qwen, Llama 2/Mistral, Llama 3, Gemma, Phi, Command R, DeepSeek,
+    Anthropic-legacy), easy to extend via PR.
+  - Four matching tiers: `STI_EXACT`/`STI_NORMALIZED` (HIGH confidence — Unicode
+    NFKC + homoglyph-folded obfuscation is *more* suspicious than the plain token, not
+    less), `STI_STRUCTURAL` (MEDIUM — unrecognized-but-token-shaped text), `STI_ENCODED`
+    (MEDIUM, opt-in via `--sti-decode`, off by default — bounded-length base64/hex only,
+    decoded bytes compared only against the registry, never the structural check).
+  - Runs across all four surfaces (tools/resources/prompts/instructions) automatically.
+  - Also scans tool call *output*, not just definitions: `BEHAV_STI_TRANSITION`
+    (CRITICAL — a control token appears only after benign calls, the time-bomb pattern
+    a definition-only scan can't see) and `BEHAV_STI_OUTPUT` (HIGH — present from the
+    first call), independent of the existing keyword-based ATPA detection.
+  - New offensive tooling: two static `generate` vectors (plain ChatML injection,
+    homoglyph-obfuscated DeepSeek token) and a live `attack sti` time-bomb simulation
+    server mirroring the existing ATPA server's call-count-gated structure.
+  - A tool that legitimately documents a token (e.g. a Llama-2 prompt-formatting helper)
+    still produces a finding — detection can't tell intent from text alone — but it's
+    suppressible through the existing suppressions mechanism like any other rule.
+
 ## [1.4.0] - 2026-07-12
 
 ### Added
@@ -120,6 +148,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: static signature, heuristic, schema/FSP, and rug-pull analyzers
   mapped to the OWASP MCP Top 10, plus offensive ATPA/rug-pull simulators.
 
+[1.5.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.5.0
 [1.4.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.4.0
 [1.3.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.3.0
 [1.2.0]: https://github.com/perparimmjeku/mcp-tool-auditor/releases/tag/v1.2.0

@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **68 rules** across 10 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **74 rules** across 11 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -125,6 +125,32 @@ tokens, ...) and a separate outbound-network/send-capable tool — an agent with
 one session can chain them to exfiltrate data, even though neither tool looks poisoned
 on its own._
 
+## Special Token Injection (STI)
+
+_Text that spoofs/closes a model's native chat-template control tokens (`<|im_start|>`,
+`[INST]`, `<|start_header_id|>`, DeepSeek's fullwidth `<｜User｜>`, etc.) to hijack the
+conversation-turn boundary of whatever prompt an MCP client builds from this text_
+
+| Rule | Confidence |
+|---|---|
+| `STI_EXACT` | HIGH |
+| `STI_NORMALIZED` | HIGH |
+| `STI_STRUCTURAL` | MEDIUM |
+| `STI_ENCODED` | MEDIUM |
+
+Four matching tiers, most to least certain: **exact** (literal registry token, registry
+in `signatures/sti_tokens.yaml` grouped by model family — ChatML/OpenAI/Qwen, Llama 2/
+Mistral, Llama 3, Gemma, Phi, Command R, DeepSeek, Anthropic-legacy); **normalized**
+(Unicode NFKC + homoglyph folding — fullwidth forms, Cyrillic/Greek lookalikes — plus
+zero-width/bidi stripping, then re-matched against the registry — obfuscation is *more*
+suspicious than the plain token, not less, so this stays HIGH); **structural** (unknown
+token with the right *shape*, e.g. `<|...|>`, catches uncatalogued model families);
+**encoded** (bounded-length base64/hex substring that decodes to a registry token —
+opt-in via `--sti-decode`, off by default, and the decoded bytes are only ever compared
+against the registry, never fed back into the structural regex). Also gets the
+`RES_`/`PROMPT_`/`INSTR_` surface prefix like the static/heuristic rules, and is scanned
+in tool call *output* via the behavioral rules below, not just definitions.
+
 ## LLM semantic judge (opt-in)
 
 _Catches paraphrased poisoning that dodges static signatures_
@@ -145,8 +171,18 @@ _Runtime response analysis_
 |---|---|
 | `BEHAV_ATPA_TRANSITION` | HIGH |
 | `BEHAV_OUTPUT_INJECTION` | HIGH |
+| `BEHAV_STI_TRANSITION` | HIGH |
+| `BEHAV_STI_OUTPUT` | HIGH |
 | `BEHAV_CALL_ERROR` | MEDIUM |
 | `BEHAV_RESPONSE_DIVERGENCE` | LOW |
+
+`BEHAV_STI_*` runs the same STI four-tier matcher against tool call *responses*
+(exact/normalized/structural tiers; `--sti-decode` isn't wired into behavioral probing
+yet), independently of the keyword-based `BEHAV_ATPA_TRANSITION`/`BEHAV_OUTPUT_INJECTION`
+checks — a response can trigger both if it contains both a control token and generic
+injection language. `BEHAV_STI_TRANSITION` (CRITICAL severity) is the time-bomb case: a
+control token appears only after benign calls, exactly the pattern a definition-only
+scan can't see. `BEHAV_STI_OUTPUT` (HIGH severity) is present from the first call.
 
 ## Source-scan
 

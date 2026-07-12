@@ -26,6 +26,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | Heuristic Analysis | Imperative language scoring, authority spoofing, Unicode hidden characters, and excessive agency claims |
 | Multi-Surface Scanning | The same signature/heuristic engine also runs on `resources`, `prompts`, and the server's `initialize` `instructions` string — not just tool descriptions |
 | Schema Anomaly Detection | Full-Schema Poisoning (FSP), sidenote parameter injection, enum injection, poisoned defaults, and required-array abuse |
+| Special Token Injection (STI) | Chat-template control tokens (`<\|im_start\|>`, `[INST]`, DeepSeek's fullwidth `<｜User｜>`, ...) via exact/Unicode-normalized/structural/encoded matching — in definitions *and* tool call output |
 | Cross-Tool Composition Risk | Flags a server exposing both a sensitive-data-access tool and an egress-capable tool — individually benign, chainable into exfiltration |
 | Rug-Pull Detection | HMAC-signed SHA-256 schema fingerprinting; `check` detects both unexpected tool changes *and* tampered baseline files |
 | Behavioral / ATPA Detection | Calls tools and inspects responses for the benign→malicious time-bomb signature, output injection, and exfil instructions |
@@ -46,6 +47,7 @@ The project also includes authorized offensive tooling for penetration testers a
 | ATPA Server | Behavioral poisoning that becomes malicious after a configurable threshold |
 | Rug-Pull Server | Serves clean tools initially, then swaps to malicious definitions |
 | Tool Shadowing Server | Mimics trusted tool names while embedding injected payloads |
+| STI Simulation Server | Benign tool definitions; injects a chat-template control token into responses after a configurable call threshold |
 
 ---
 
@@ -268,6 +270,30 @@ mcp-tool-auditor source-scan ./my-mcp-server --fail-on CRITICAL  # CI gate
 
 It only opens files that import an MCP SDK, so it won't flag shell calls in unrelated code.
 
+### Special Token Injection (STI)
+
+Chat-template control tokens (`<|im_start|>`, `[INST]`, `<|start_header_id|>`, DeepSeek's
+fullwidth `<｜User｜>`, and more — registry in `signatures/sti_tokens.yaml`, grouped by
+model family, easy to extend via PR) spoof or close a conversation turn in whatever prompt
+an MCP client eventually builds from tool/resource/prompt text. Runs by default across all
+four surfaces, plus tool call *output* (`behavior` command) to catch a token a tool only
+emits after N calls:
+
+```bash
+mcp-tool-auditor scan url http://localhost:8080/mcp          # exact/normalized/structural tiers
+mcp-tool-auditor scan url http://localhost:8080/mcp --sti-decode  # + bounded base64/hex tier
+mcp-tool-auditor behavior url http://localhost:8080/mcp --calls 6 --yes  # scans tool output too
+```
+
+`--sti-decode` is opt-in and off by default: it only considers length-banded base64/hex
+substrings (never "decode every string"), and only compares decoded bytes against the
+token registry, never the looser structural shape check — bounding both cost and false
+positives. Findings: `STI_EXACT`/`STI_NORMALIZED` (HIGH confidence — obfuscation is *more*
+suspicious than the plain token, not less), `STI_STRUCTURAL`/`STI_ENCODED` (MEDIUM). A tool
+that legitimately documents a token (e.g. a Llama-2 prompt-formatting helper mentioning
+`[INST]`) still produces a finding — detection can't tell intent from text alone — but it's
+suppressible like any other rule (`--suppress STI_EXACT` or a suppressions file entry).
+
 ### Generate Offensive Test Servers
 
 ```bash
@@ -349,7 +375,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 68 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 74 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -361,7 +387,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 |---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | `ST_IGNORE_PREVIOUS`, `ST_BYPASS`, `ST_IGNORE_SECURITY` |
 | MCP02 | Privilege Escalation via Scope Creep | `HEUR_AGENCY`, `COMPOSITION_CONFUSED_DEPUTY`, credential-related signatures |
-| MCP03 | Tool Poisoning | Signatures, heuristics, FSP, rug-pull/shadowing, and behavioral/ATPA detection |
+| MCP03 | Tool Poisoning | Signatures, heuristics, FSP, rug-pull/shadowing, STI (`STI_EXACT`/`STI_NORMALIZED`/`STI_STRUCTURAL`/`STI_ENCODED`), and behavioral/ATPA detection |
 | MCP05 | Command Injection & Execution | `ST_EXECUTE`, `ST_CODE_EXEC`, command-related schema findings |
 
 Findings are actively emitted for **MCP01, MCP02, MCP03, and MCP05**. Reports also
@@ -378,6 +404,11 @@ mcp-tool-auditor attack atpa --port 8080 --threshold 3
 
 # Start a rug-pull simulation server
 mcp-tool-auditor attack rugpull --port 8081 --switch-after 5
+
+# Start an STI (Special Token Injection) simulation server -- benign
+# definitions, injects a chat-template control token into responses
+# after --threshold calls
+mcp-tool-auditor attack sti --port 8082 --threshold 3
 
 # Generate standalone attack servers
 mcp-tool-auditor generate all --output-dir ./test_servers
@@ -416,12 +447,14 @@ mcp-tool-auditor/
 │   │   │   ├── behavioral.py
 │   │   │   ├── composition.py
 │   │   │   ├── llm_judge.py
+│   │   │   ├── sti.py
 │   │   │   ├── surface.py
 │   │   │   └── patterns.py
 │   │   ├── signatures/
 │   │   │   ├── __init__.py
 │   │   │   ├── descriptions.yaml
-│   │   │   └── parameters.yaml
+│   │   │   ├── parameters.yaml
+│   │   │   └── sti_tokens.yaml
 │   │   └── reporters/
 │   │       ├── __init__.py
 │   │       ├── json_reporter.py
@@ -432,7 +465,8 @@ mcp-tool-auditor/
 │       ├── __init__.py
 │       ├── poisoner.py
 │       ├── atpa_server.py
-│       └── rugpull_sim.py
+│       ├── rugpull_sim.py
+│       └── sti_server.py
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py
@@ -453,6 +487,9 @@ mcp-tool-auditor/
 │   ├── test_sarif_reporter.py
 │   ├── test_scope_enforcement.py
 │   ├── test_source_scan.py
+│   ├── test_sti_analyzer.py
+│   ├── test_sti_behavioral.py
+│   ├── test_sti_offensive.py
 │   ├── test_surface_scanning.py
 │   ├── test_watch.py
 │   └── fixtures/
@@ -530,7 +567,7 @@ The authors assume no liability for misuse, unauthorized testing, or damages cau
 ```python
 """MCP Tool Auditor package."""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __author__ = "Përparim Mjeku"
 __license__ = "MIT"
 ```
