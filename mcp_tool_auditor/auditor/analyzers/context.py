@@ -32,7 +32,10 @@ _PAGINATION_CONTEXT = re.compile(
 
 # Real corroborating evidence for a credential match: an action verb near a
 # credential noun, in either order ("reveals the token" / "token... leaked").
-_ACTION_VERB = r"reveal\w*|expose\w*|exfiltrat\w*|leak\w*|transmit\w*|dump\w*|embed\w*"
+_ACTION_VERB = (
+    r"reveal\w*|expose\w*|exfiltrat\w*|leak\w*|transmit\w*|dump\w*|embed\w*|"
+    r"include\w*|attach\w*|append\w*|submit\w*"
+)
 _CREDENTIAL_NOUN = (
     r"credential\w*|password\w*|secret\w*|token\w*|api[\s_-]?key\w*|"
     r"ssh[\s_-]?key\w*|environment\s+variables?"
@@ -49,7 +52,7 @@ _STRONG_CREDENTIAL_SIGNAL = re.compile(
 _SENSITIVE_NOUN = (
     r"sensitive\w*|private\w*|confidential\w*|personal\w*|credential\w*|secret\w*|password\w*"
 )
-_SINK_VERB = r"send\w*|post\w*|transmit\w*|upload\w*|exfiltrat\w*"
+_SINK_VERB = r"send\w*|post\w*|transmit\w*|upload\w*|exfiltrat\w*|submit\w*|include\w*"
 _STRONG_EXFIL_SIGNAL = re.compile(
     rf"\b(?:{_SENSITIVE_NOUN})\b(?:\W+\w+){{0,8}}\W+\b(?:{_SINK_VERB})\b"
     rf"|"
