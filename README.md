@@ -268,8 +268,13 @@ mcp-tool-auditor scan url https://target/mcp \
   --suppress HEUR_IMPERATIVE
 ```
 
-Findings carry a **confidence** level (HIGH/MEDIUM/LOW); `--min-confidence` filters
-noisy heuristics and `--suppressions <file>` silences accepted false positives.
+Findings carry a **confidence** level (HIGH/MEDIUM/LOW/INFO); `--min-confidence` filters
+noisy heuristics and bare keyword matches, and `--suppressions <file>` silences accepted
+false positives. HIGH is reserved for definitive evidence (an explicit instruction-override
+phrase, a confirmed control-token match, a real AST-detected code sink) — a bare keyword
+match with no corroborating context (e.g. the word "token" or "sensitive" appearing
+somewhere in a tool's text) is never more than LOW, and INFO marks a pure observation
+(an unexecuted archive resource, output-schema metadata) rather than a vulnerability claim.
 URL transport speaks full MCP Streamable HTTP (session id + protocol-version headers) at
 protocol version `2025-06-18`. If the server requires OAuth 2.1, the scan reports a clear
 `OAUTH_REQUIRED` finding (with protected-resource metadata, if discoverable) instead of a
@@ -574,7 +579,7 @@ Use `--yes` only for non-interactive, authorized lab runs.
 
 ## Detection Coverage & Sample Reports
 
-- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 65 detection rules with confidence levels.
+- **[docs/RULES.md](docs/RULES.md)** — full catalog of all 67 detection rules with confidence levels.
 - **Sample output** from a poisoned fixture: [markdown](docs/samples/sample-report.md) ·
   [json](docs/samples/sample-report.json) · [sarif](docs/samples/sample-report.sarif).
 
@@ -643,6 +648,7 @@ mcp-auditor/
 │   │   ├── analyzers/
 │   │   │   ├── __init__.py
 │   │   │   ├── static.py
+│   │   │   ├── context.py
 │   │   │   ├── heuristic.py
 │   │   │   ├── schema.py
 │   │   │   ├── rugpull.py

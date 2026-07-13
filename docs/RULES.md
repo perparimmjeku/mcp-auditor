@@ -1,6 +1,6 @@
 # Detection Rule Catalog
 
-Auto-derived from the source. **65 rules** across 12 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual, **LOW** = fuzzy heuristic (tune with `--min-confidence`).
+Auto-derived from the source. **67 rules** across 12 analyzers. Confidence reflects false-positive likelihood: **HIGH** = definitive, **MEDIUM** = contextual (real corroborating evidence, needs runtime validation), **LOW** = fuzzy heuristic or bare keyword match (manual review candidate), **INFO** = capability inventory / unvalidated observation, not a vulnerability claim (tune with `--min-confidence`).
 
 **Multi-surface scanning:** every static signature and heuristic rule below also runs against
 resources, prompts, and the server's top-level `instructions` string, not just tools — poisoning
@@ -16,28 +16,41 @@ _Known tool-poisoning phrases in tool text_
 | Rule | Confidence |
 |---|---|
 | `ST_ALWAYS_CALL` | HIGH |
-| `ST_ARCHIVE_UNINSPECTED` | INFO |
 | `ST_ALWAYS_USE` | HIGH |
+| `ST_ARCHIVE_UNINSPECTED` | INFO |
 | `ST_AUTHORITATIVE` | HIGH |
 | `ST_BYPASS` | HIGH |
-| `ST_CODE_EXEC` | HIGH |
-| `ST_CONTEXT_HARVEST` | HIGH |
-| `ST_CREDENTIAL` | HIGH |
-| `ST_DATA_EXFIL` | HIGH |
+| `ST_CODE_EXEC` | LOW |
+| `ST_CONTEXT_HARVEST` | LOW |
+| `ST_CREDENTIAL` | LOW–MEDIUM* |
+| `ST_DATA_EXFIL` | LOW–MEDIUM* |
 | `ST_DO_NOT_QUESTION` | HIGH |
 | `ST_DO_NOT_TELL` | HIGH |
-| `ST_EXECUTE` | HIGH |
-| `ST_FILESYSTEM` | HIGH |
+| `ST_EXECUTE` | LOW |
+| `ST_FILESYSTEM` | LOW |
 | `ST_IGNORE_ALL` | HIGH |
 | `ST_IGNORE_PREVIOUS` | HIGH |
 | `ST_IGNORE_SECURITY` | HIGH |
 | `ST_MANDATORY` | HIGH |
 | `ST_OVERRIDE` | HIGH |
-| `ST_READ_FILE` | HIGH |
+| `ST_READ_FILE` | LOW |
 | `ST_SEND_FULL` | HIGH |
-| `ST_SENSITIVE` | HIGH |
+| `ST_SENSITIVE` | LOW (INFO if only in output schema)* |
 | `ST_SYSTEM_CLAIM` | HIGH |
 | `ST_YOU_MUST` | HIGH |
+
+_\* `ST_CREDENTIAL`, `ST_DATA_EXFIL`, `ST_SENSITIVE`, and `ST_CODE_EXEC` are bare keyword/
+capability matches (e.g. "token", "secret", "eval", "sensitive") with no context awareness on
+their own -- a false-positive source in practice (see `analyzers/context.py`). Each match is
+classified before it's reported: "token" adjacent to pagination/model-context wording (offset,
+chunk, max\_tokens, context window/length) is suppressed outright as having no security signal;
+real corroborating evidence (an action verb -- reveal/expose/leak/transmit/dump/embed/include/
+submit -- near a credential or sensitive-data noun) escalates `ST_CREDENTIAL`/`ST_DATA_EXFIL` from
+the LOW baseline to MEDIUM; a match found only inside a tool's **output schema** (metadata
+describing what the tool returns, not what it requests) drops one further tier, e.g.
+`ST_SENSITIVE` on an output `private: boolean` field reports at INFO. `ST_CODE_EXEC` has no
+escalation path -- a real dynamic-code-execution finding is `SRC_DYNAMIC_CODE_EXEC`'s job (see
+Source-scan below), not this rule's; it stays LOW even on a clean `eval(`/`exec(` text match._
 
 ## Schema / Full-Schema Poisoning
 
@@ -220,12 +233,18 @@ scan can't see. `BEHAV_STI_OUTPUT` (HIGH severity) is present from the first cal
 
 ## Source-scan
 
-_Shell-injection sinks in MCP server code_
+_Shell-injection and dynamic-code-execution sinks in MCP server code (AST-based for Python,
+regex-heuristic for JS/TS)_
 
 | Rule | Confidence |
 |---|---|
 | `SRC_SHELL_INJECTION` | HIGH |
 | `SRC_DYNAMIC_CODE_EXEC` | HIGH |
+
+`SRC_SHELL_INJECTION` flags `os.system`/`os.popen`/`subprocess.*` (Python) and
+`child_process.exec`/`spawn` (JS/TS) called with a non-constant argument. `SRC_DYNAMIC_CODE_EXEC`
+flags Python `eval()`/`exec()` and JS `eval()`/`new Function()` the same way -- the real-code
+counterpart to `ST_CODE_EXEC`'s text-match-only signal above.
 
 ## Operational
 
