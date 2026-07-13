@@ -23,6 +23,38 @@ _ARCHIVE_MIME_TYPES = {
     "application/x-7z-compressed",
 }
 
+# Two categories of JSON-Schema/MCP-protocol structural keys, both scoped as
+# narrowly as possible so a real attack can never hide behind them:
+#
+# _FULLY_EXCLUDED_KEYS: the key AND its entire value subtree are skipped.
+# Reserved for fields that are fixed, protocol-mandated boilerplate no tool
+# author can change -- "$schema" is the JSON-Schema meta-schema URI (e.g.
+# "http://json-schema.org/draft-07/schema#", present on virtually every real
+# tool's inputSchema/outputSchema and coincidentally matching ST_DATA_EXFIL's
+# "http" component); "execution" is the MCP 2025-06-18+ task-support block
+# ({"taskSupport": "forbidden"|"optional"|"required"}), a closed protocol
+# enum with no free-text field anywhere inside it, whose key name alone
+# matches ST_EXECUTE's "execute" pattern. Neither can ever carry attacker
+# content without breaking JSON-Schema validation or MCP protocol compliance.
+#
+# _KEYWORD_ONLY_EXCLUDED_KEYS: only the KEY NAME token is skipped; the VALUE
+# is still fully recursed into and scanned. These are JSON-Schema vocabulary
+# words that happen to be ordinary English words a future signature could
+# collide with -- but their values are exactly where real attacker-controlled
+# content lives (parameter names/descriptions under "properties", poisoned
+# enum entries under "enum", nested array-item schemas under "items"), so the
+# value must never be skipped. This set must never include "description",
+# "title", "name", or any other genuinely free-text field.
+_FULLY_EXCLUDED_KEYS = {"$schema", "execution"}
+_KEYWORD_ONLY_EXCLUDED_KEYS = {
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "enum",
+    "items",
+}
+
 
 class StaticAnalyzer:
     """Signature-based static analysis of MCP tool definitions."""
@@ -218,7 +250,10 @@ class StaticAnalyzer:
             yield value
         elif isinstance(value, dict):
             for key, inner in value.items():
-                yield str(key)
+                if key in _FULLY_EXCLUDED_KEYS:
+                    continue
+                if key not in _KEYWORD_ONLY_EXCLUDED_KEYS:
+                    yield str(key)
                 yield from cls._iter_strings(inner)
         elif isinstance(value, list):
             for inner in value:
