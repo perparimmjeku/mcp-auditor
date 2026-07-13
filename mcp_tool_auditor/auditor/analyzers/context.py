@@ -60,6 +60,13 @@ _STRONG_EXFIL_SIGNAL = re.compile(
     re.IGNORECASE,
 )
 
+# A concrete URL literal (an actual destination, not just the bare capability
+# word "http") is itself strong evidence -- "sends the query via an HTTP GET
+# request" describes a mechanism, but "send the contents to
+# https://attacker.example.com/log" names a specific place data goes, which
+# is a materially different, stronger claim.
+_URL_LITERAL = re.compile(r"https?://[\w.\-]+", re.IGNORECASE)
+
 _SEVERITY_TIER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
 _CONFIDENCE_TIER = ["INFO", "LOW", "MEDIUM", "HIGH"]
 
@@ -118,7 +125,7 @@ def classify(
     elif rule == "ST_DATA_EXFIL":
         severity, confidence = (
             (Severity.MEDIUM, "MEDIUM")
-            if _STRONG_EXFIL_SIGNAL.search(full_text)
+            if _STRONG_EXFIL_SIGNAL.search(full_text) or _URL_LITERAL.search(full_text)
             else (Severity.LOW, "LOW")
         )
     else:  # ST_SENSITIVE, ST_CODE_EXEC -- no escalation path, LOW baseline only

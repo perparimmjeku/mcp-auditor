@@ -45,7 +45,8 @@ their own -- a false-positive source in practice (see `analyzers/context.py`). E
 classified before it's reported: "token" adjacent to pagination/model-context wording (offset,
 chunk, max\_tokens, context window/length) is suppressed outright as having no security signal;
 real corroborating evidence (an action verb -- reveal/expose/leak/transmit/dump/embed/include/
-submit -- near a credential or sensitive-data noun) escalates `ST_CREDENTIAL`/`ST_DATA_EXFIL` from
+submit -- near a credential or sensitive-data noun, or a concrete URL literal for
+`ST_DATA_EXFIL` specifically) escalates `ST_CREDENTIAL`/`ST_DATA_EXFIL` from
 the LOW baseline to MEDIUM; a match found only inside a tool's **output schema** (metadata
 describing what the tool returns, not what it requests) drops one further tier, e.g.
 `ST_SENSITIVE` on an output `private: boolean` field reports at INFO. `ST_CODE_EXEC` has no
