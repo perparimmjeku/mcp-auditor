@@ -99,7 +99,7 @@ def _add_scan_options(parser, include_rugpull: bool = False) -> None:
     )
     parser.add_argument(
         "--min-confidence",
-        choices=["HIGH", "MEDIUM", "LOW"],
+        choices=["HIGH", "MEDIUM", "LOW", "INFO"],
         default=None,
         help="Only report findings at or above this confidence level",
     )
@@ -416,7 +416,9 @@ Examples:
             default=None,
             help="Exit non-zero (code 2) if a finding at or above this severity is present",
         )
-        sub.add_argument("--min-confidence", choices=["HIGH", "MEDIUM", "LOW"], default=None)
+        sub.add_argument(
+            "--min-confidence", choices=["HIGH", "MEDIUM", "LOW", "INFO"], default=None
+        )
         sub.add_argument("--suppress", action="append", default=[], metavar="RULE")
         sub.add_argument("--suppressions", default=None, metavar="FILE")
     for sub in (beh_stdio, beh_url):
@@ -758,7 +760,7 @@ def _run_scan(args, scanner: MCPScanner, engagement=None):
     raise ValidationError("Specify 'stdio', 'url', 'config', or 'import'")
 
 
-_CONFIDENCE_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+_CONFIDENCE_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
 
 
 def _apply_triage(results, args):

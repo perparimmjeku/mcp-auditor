@@ -62,7 +62,7 @@ class Finding:
         if self.confidence is None:
             from .confidence import confidence_for
 
-            self.confidence = confidence_for(self.rule)
+            self.confidence = confidence_for(self.rule, self.severity.value)
         if not self.rule:
             raise ValueError("Finding.rule cannot be empty")
         if not self.message:

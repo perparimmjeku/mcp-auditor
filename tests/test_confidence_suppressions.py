@@ -34,6 +34,74 @@ def test_confidence_flow_tiers():
     assert confidence_for("COMPOSITION_CONFUSED_DEPUTY") == "MEDIUM"
 
 
+def test_bare_keyword_st_rules_are_never_high():
+    """The blanket "ST_" prefix used to promote every ST_* rule to HIGH
+    confidence, including bare keyword matches with zero corroborating
+    context. Only the explicit instruction-override rules stay HIGH; the
+    keyword families drop to LOW."""
+    for rule in (
+        "ST_CREDENTIAL",
+        "ST_DATA_EXFIL",
+        "ST_CODE_EXEC",
+        "ST_SENSITIVE",
+        "ST_FILESYSTEM",
+        "ST_READ_FILE",
+        "ST_EXECUTE",
+        "ST_CONTEXT_HARVEST",
+    ):
+        assert confidence_for(rule) == "LOW", rule
+        # Surface-prefixed forms (resources/prompts/instructions) too.
+        assert confidence_for(f"RES_{rule}") == "LOW", rule
+
+
+def test_instruction_override_rules_stay_high():
+    for rule in (
+        "ST_ALWAYS_USE",
+        "ST_SEND_FULL",
+        "ST_IGNORE_PREVIOUS",
+        "ST_IGNORE_ALL",
+        "ST_IGNORE_SECURITY",
+        "ST_AUTHORITATIVE",
+        "ST_DO_NOT_QUESTION",
+        "ST_YOU_MUST",
+        "ST_ALWAYS_CALL",
+        "ST_BYPASS",
+        "ST_DO_NOT_TELL",
+        "ST_SYSTEM_CLAIM",
+        "ST_OVERRIDE",
+        "ST_MANDATORY",
+    ):
+        assert confidence_for(rule) == "HIGH", rule
+
+
+def test_archive_uninspected_is_info():
+    assert confidence_for("ST_ARCHIVE_UNINSPECTED") == "INFO"
+
+
+def test_src_dynamic_code_exec_is_high():
+    assert confidence_for("SRC_DYNAMIC_CODE_EXEC") == "HIGH"
+
+
+def test_confidence_never_exceeds_severity():
+    """Global invariant: a LOW-severity finding can't be reported at HIGH
+    confidence even if a rule's static prefix bucket would otherwise say so
+    -- this is the generic fix for the ST_SENSITIVE severity=LOW/
+    confidence=HIGH contradiction, applied to every rule, not just that one."""
+    assert confidence_for("ST_BYPASS", "LOW") == "LOW"
+    assert confidence_for("ST_BYPASS", "MEDIUM") == "MEDIUM"
+    assert confidence_for("ST_BYPASS", "HIGH") == "HIGH"
+    assert confidence_for("ST_BYPASS", "CRITICAL") == "HIGH"
+    # Severity above LOW never lowers a genuinely LOW-confidence rule.
+    assert confidence_for("HEUR_IMPERATIVE", "CRITICAL") == "LOW"
+
+
+def test_severity_none_skips_the_ceiling_clamp():
+    """Callers that don't know the severity yet (e.g. direct confidence_for
+    lookups elsewhere in the codebase) get the unclamped static-bucket
+    result, preserving existing behavior for two-arg-agnostic callers."""
+    assert confidence_for("ST_BYPASS") == "HIGH"
+
+
 def test_finding_resolves_confidence_on_creation():
     assert _finding("ST_BYPASS").confidence == "HIGH"
     assert _finding("HEUR_IMPERATIVE").confidence == "LOW"

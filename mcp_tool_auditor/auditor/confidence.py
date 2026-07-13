@@ -1,13 +1,42 @@
 """Confidence levels for findings, derived from the rule that produced them.
 
-HIGH   — definitive matches (known signatures, exact poison content, runtime ATPA).
-LOW    — fuzzy heuristics prone to false positives (length/imperative scoring).
-MEDIUM — everything else.
+HIGH   — definitive matches (explicit malicious instruction, known control-
+         token/signature match, concrete AST/regex evidence of a real sink,
+         confirmed cross-server wiring).
+MEDIUM — contextual evidence strongly suggests abuse but needs runtime
+         validation (a keyword match with real corroborating signal nearby).
+LOW    — suspicious wording/capability requiring manual review (a bare
+         keyword match with no corroborating context, or a fuzzy heuristic).
+INFO   — capability inventory / unvalidated observation (e.g. an archive
+         resource whose contents were never inspected, or a keyword match
+         that only appears in output-schema metadata describing what the
+         tool returns).
+
+A bare keyword match is never HIGH confidence on its own -- see
+analyzers/context.py, which applies this tiering to ST_CREDENTIAL/
+ST_DATA_EXFIL/ST_CODE_EXEC/ST_SENSITIVE per-match rather than relying solely
+on the static prefix buckets below.
 """
 
 _HIGH_PREFIXES = (
-    "ST_",
+    # Explicit instruction-override / manipulation phrases -- concrete,
+    # unambiguous evidence of an attempt to coerce the agent.
+    "ST_ALWAYS_USE",
+    "ST_SEND_FULL",
+    "ST_IGNORE_PREVIOUS",
+    "ST_IGNORE_ALL",
+    "ST_IGNORE_SECURITY",
+    "ST_AUTHORITATIVE",
+    "ST_DO_NOT_QUESTION",
+    "ST_YOU_MUST",
+    "ST_ALWAYS_CALL",
+    "ST_BYPASS",
+    "ST_DO_NOT_TELL",
+    "ST_SYSTEM_CLAIM",
+    "ST_OVERRIDE",
+    "ST_MANDATORY",
     "SRC_SHELL_INJECTION",
+    "SRC_DYNAMIC_CODE_EXEC",
     "BEHAV_ATPA_TRANSITION",
     "BEHAV_OUTPUT_INJECTION",
     "RUGPULL_FINGERPRINT_MISMATCH",
@@ -39,6 +68,30 @@ _LOW_PREFIXES = (
     "SCHEMA_GENERIC_TYPE",
     "BEHAV_RESPONSE_DIVERGENCE",
     "PROMPT_ARG_DESC_LONG",
+    # Bare keyword/capability matches in tool text -- a single word or short
+    # phrase with no check of surrounding context. "token" fires identically
+    # for "token offset" (pagination) and "leak the token" (real exposure);
+    # these can never be more than a manual-review signal on the rule's own
+    # static-prefix default. The four with real per-match context classifiers
+    # (ST_CREDENTIAL, ST_DATA_EXFIL, ST_CODE_EXEC, ST_SENSITIVE) mostly bypass
+    # this default with an explicit confidence from analyzers/context.py; it
+    # still matters as the fallback for any construction path that doesn't
+    # go through that classifier (e.g. a custom signature reusing the rule
+    # name) and as documentation of the baseline tier.
+    "ST_CREDENTIAL",
+    "ST_DATA_EXFIL",
+    "ST_CODE_EXEC",
+    "ST_SENSITIVE",
+    "ST_FILESYSTEM",
+    "ST_READ_FILE",
+    "ST_EXECUTE",
+    "ST_CONTEXT_HARVEST",
+)
+
+_INFO_PREFIXES = (
+    # An observation, not a vulnerability claim -- an archive resource whose
+    # contents were never inspected. See analyzers/static.py's archive check.
+    "ST_ARCHIVE_UNINSPECTED",
 )
 
 # Resource/prompt/instructions findings reuse tool rule ids with a surface
@@ -65,15 +118,43 @@ _KIND_PREFIXES = ("RES_", "PROMPT_", "INSTR_")
 # independent guard against it ever being promoted to HIGH by a future change
 # here -- an inferred chain must never carry more certainty than a guess.
 
+# A finding's confidence can never claim more certainty than its severity
+# implies -- e.g. a LOW-severity finding (ST_SENSITIVE's "private"/
+# "confidential" pattern set) has no business being reported at HIGH
+# confidence, even if some future prefix change would otherwise produce
+# that. This ceiling only applies to the *derived* confidence computed here;
+# a caller that explicitly sets Finding(confidence=...) is trusted to know
+# what it's doing (see models.Finding.__post_init__) and bypasses it.
+_SEVERITY_CONFIDENCE_CEILING = {
+    "CRITICAL": "HIGH",
+    "HIGH": "HIGH",
+    "MEDIUM": "MEDIUM",
+    "LOW": "LOW",
+    "INFO": "INFO",
+    "ERROR": "HIGH",
+}
+_CONFIDENCE_RANK = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3}
 
-def confidence_for(rule: str) -> str:
+
+def confidence_for(rule: str, severity: str | None = None) -> str:
     bare = rule
     for prefix in _KIND_PREFIXES:
         if bare.startswith(prefix):
             bare = bare[len(prefix) :]
             break
+
     if bare.startswith(_HIGH_PREFIXES):
-        return "HIGH"
-    if bare.startswith(_LOW_PREFIXES):
-        return "LOW"
-    return "MEDIUM"
+        level = "HIGH"
+    elif bare.startswith(_INFO_PREFIXES):
+        level = "INFO"
+    elif bare.startswith(_LOW_PREFIXES):
+        level = "LOW"
+    else:
+        level = "MEDIUM"
+
+    if severity is not None:
+        ceiling = _SEVERITY_CONFIDENCE_CEILING.get(str(severity).upper(), "HIGH")
+        if _CONFIDENCE_RANK[level] > _CONFIDENCE_RANK[ceiling]:
+            level = ceiling
+
+    return level
