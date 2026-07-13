@@ -100,152 +100,152 @@ high_severity:
     attack_type: "tool_poisoning"
 
 medium_severity:
-  - pattern: "read_file"
+  - pattern: '\bread_file\b'
     rule: ST_READ_FILE
     message: "File read capability mentioned — potential sensitive data access."
     owasp_id: "MCP03"
     attack_type: "sensitive_access"
 
-  - pattern: "password"
+  - pattern: '\bpassword\b'
     rule: ST_CREDENTIAL
     message: "Credential-related terminology — potential exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "secret"
+  - pattern: '\bsecret\b'
     rule: ST_CREDENTIAL
     message: "Credential-related terminology — potential exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "token"
+  - pattern: '\btoken\b'
     rule: ST_CREDENTIAL
     message: "Token exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "api_key"
+  - pattern: '\bapi_key\b'
     rule: ST_CREDENTIAL
     message: "API key exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "ssh"
+  - pattern: '\bssh\b'
     rule: ST_CREDENTIAL
     message: "SSH key exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "aws"
+  - pattern: '\baws\b'
     rule: ST_CREDENTIAL
     message: "AWS credential exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: "send.*http"
+  - pattern: '\bsend\b.*\bhttp\b'
     rule: ST_DATA_EXFIL
     message: "Potential data exfiltration via HTTP."
     owasp_id: "MCP03"
     attack_type: "data_exfiltration"
 
-  - pattern: "post.*data"
+  - pattern: '\bpost\b.*\bdata\b'
     rule: ST_DATA_EXFIL
     message: "Data posting — potential exfiltration."
     owasp_id: "MCP03"
     attack_type: "data_exfiltration"
 
-  - pattern: "curl"
+  - pattern: '\bcurl\b'
     rule: ST_EXECUTE
     message: "Command execution via curl."
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: "execute"
+  - pattern: '\bexecute\b'
     rule: ST_EXECUTE
     message: "Command execution indicator."
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: "subprocess"
+  - pattern: '\bsubprocess\b'
     rule: ST_EXECUTE
     message: "Subprocess execution indicator."
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: "os.system"
+  - pattern: '\bos\.system\b'
     rule: ST_EXECUTE
     message: "OS command execution indicator."
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: "eval"
+  - pattern: '\beval\b'
     rule: ST_CODE_EXEC
     message: "Dynamic code execution indicator."
     owasp_id: "MCP05"
     attack_type: "code_injection"
 
-  - pattern: "exec("
+  - pattern: '\bexec\s*\('
     rule: ST_CODE_EXEC
     message: "Dynamic code execution indicator."
     owasp_id: "MCP05"
     attack_type: "code_injection"
 
-  - pattern: "write_file"
+  - pattern: '\bwrite_file\b'
     rule: ST_FILESYSTEM
     message: "File write capability — potential filesystem modification."
     owasp_id: "MCP03"
     attack_type: "filesystem_access"
 
-  - pattern: "delete_file"
+  - pattern: '\bdelete_file\b'
     rule: ST_FILESYSTEM
     message: "File deletion capability — potential destructive action."
     owasp_id: "MCP03"
     attack_type: "filesystem_access"
 
-  - pattern: "chmod"
+  - pattern: '\bchmod\b'
     rule: ST_FILESYSTEM
     message: "Permission modification capability."
     owasp_id: "MCP03"
     attack_type: "privilege_escalation"
 
-  - pattern: "sudo"
+  - pattern: '\bsudo\b'
     rule: ST_FILESYSTEM
     message: "Privilege escalation indicator."
     owasp_id: "MCP02"
     attack_type: "privilege_escalation"
 
 low_severity:
-  - pattern: "full context"
+  - pattern: '\bfull context\b'
     rule: ST_CONTEXT_HARVEST
     message: "Requesting broad context access."
     owasp_id: "MCP03"
     attack_type: "context_harvesting"
 
-  - pattern: "entire conversation"
+  - pattern: '\bentire conversation\b'
     rule: ST_CONTEXT_HARVEST
     message: "Conversation harvesting requested."
     owasp_id: "MCP03"
     attack_type: "context_harvesting"
 
-  - pattern: "all messages"
+  - pattern: '\ball messages\b'
     rule: ST_CONTEXT_HARVEST
     message: "Message harvesting requested."
     owasp_id: "MCP03"
     attack_type: "context_harvesting"
 
-  - pattern: "sensitive"
+  - pattern: '\bsensitive\b'
     rule: ST_SENSITIVE
     message: "Sensitive information handling reference."
     owasp_id: "MCP03"
     attack_type: "data_handling"
 
-  - pattern: "confidential"
+  - pattern: '\bconfidential\b'
     rule: ST_SENSITIVE
     message: "Confidential data handling reference."
     owasp_id: "MCP03"
     attack_type: "data_handling"
 
-  - pattern: "private"
+  - pattern: '\bprivate\b'
     rule: ST_SENSITIVE
     message: "Private data access reference."
     owasp_id: "MCP03"
