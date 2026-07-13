@@ -4,65 +4,32 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.10.0] - 2026-07-13
+## [1.10.0] - 2026-07-13 — Detection precision & honest confidence
+
+The signature engine no longer treats a security-relevant *word* as a security
+*vulnerability*. Keyword matches without corroborating context no longer emit
+HIGH-confidence findings.
 
 ### Fixed
-- **Detection precision & confidence calibration** — a real-world scan of a legitimate
-  public MCP server (Hugging Face's) surfaced that keyword-only static rules were
-  reporting HIGH-confidence vulnerability findings on nothing more than a bare word
-  match: a docs-search tool flagged for "data exfiltration" on an `openWorldHint`
-  capability description, "Token offset for large documents" (pagination) flagged as
-  credential exposure, an archive filename (`community-evals.tar.gz`) flagged as dynamic
-  code execution because "eval" is a substring of "evals", and a `private: boolean`
-  field in a tool's **output** schema (describing what it returns) flagged the same as a
-  request to access private data. Root cause: a blanket `"ST_"` prefix in the confidence
-  engine promoted every static-signature rule to HIGH confidence, including six
-  bare-keyword families that were never meant to carry that certainty, and every one of
-  them fell through to a generic "matched a tool-poisoning signature" remediation message
-  that didn't describe what they'd actually matched.
-  - **Rule-specific remediation**: `ST_CREDENTIAL`, `ST_DATA_EXFIL`, `ST_CODE_EXEC`,
-    `ST_SENSITIVE`, `ST_FILESYSTEM`, `ST_READ_FILE`, `ST_EXECUTE`, `ST_CONTEXT_HARVEST`
-    each now get remediation describing what they actually matched, instead of the
-    generic tool-poisoning catch-all.
-  - **Confidence recalibration**: only the 14 explicit instruction-override signatures
-    (`ST_IGNORE_PREVIOUS`, `ST_BYPASS`, `ST_ALWAYS_USE`, etc.) stay HIGH confidence. The
-    eight bare-keyword rules above drop to a LOW baseline. A new global invariant —
-    confidence can never exceed what a finding's severity implies — is enforced in
-    `confidence_for()` for every rule, not just these eight (this is what makes
-    `ST_SENSITIVE`'s prior severity=LOW/confidence=HIGH combination impossible now).
-    **INFO** is a real emitted confidence tier for the first time (also added to
-    `--min-confidence`).
-  - **Context classifiers** (new `analyzers/context.py`) apply per-match context to the
-    four worst offenders before they're reported: "token" adjacent to pagination/
-    model-context wording (offset, chunk, max_tokens, context window/length) is
-    suppressed outright; real corroborating evidence (an action verb — reveal/expose/
-    leak/transmit/dump/embed/include/submit — near a credential or sensitive-data noun)
-    escalates `ST_CREDENTIAL`/`ST_DATA_EXFIL` from LOW to MEDIUM; a match found only in a
-    tool's **output schema** drops one further tier (e.g. an output `private: boolean`
-    field now reports `ST_SENSITIVE` at INFO, not LOW).
-  - **Word-boundary fix**: bare-keyword signature patterns (`eval`, `token`, `aws`, `ssh`,
-    `sensitive`, `execute`, etc.) matched as unanchored substrings, so "eval" fired inside
-    "evals.tar.gz". All now match whole words (with plural/verb-conjugation forms kept,
-    e.g. `tokens`, `sends`/`sending`, `executes`).
-  - **New `ST_ARCHIVE_UNINSPECTED`** (INFO): an archive-format resource (`.tar.gz`/`.zip`/
-    `.whl`/`.jar`/`.7z`, by mimeType or filename) now gets an explicit "contents not
-    inspected" observation — this is what actually replaces the false `ST_CODE_EXEC` hit
-    the word-boundary fix removed for archive filenames, rather than silence.
-  - **New `SRC_DYNAMIC_CODE_EXEC`** (HIGH, source-scan): closes a real gap found while
-    downgrading `ST_CODE_EXEC`'s text-match confidence — source-scan's AST/regex
-    analyzers previously only detected shell-injection sinks (`os.system`/`subprocess.*`/
-    `child_process.exec`/`spawn`), never Python `eval()`/`exec()` or JS `eval()`/
-    `new Function()`, the actual dynamic-code-execution sinks. Real code-exec in MCP
-    server source now has a proper concrete-finding backstop; `ST_CODE_EXEC`'s text match
-    stays LOW-confidence review-only, as designed.
-  - **Two-sided regression gate**: `tests/test_precision_floor_ceiling.py` — FLOOR asserts
-    the existing poisoned-tools fixture and real attack phrasing (explicit instruction
-    overrides, real credential exfiltration, real dynamic code execution) still fire at
-    their intended severity/confidence; CEILING asserts a 7-item fixture modeled on the
-    real Hugging Face false-positive report produces zero HIGH/CRITICAL findings and only
-    INFO/LOW keyword-family findings. Also adds a permanent guard asserting JSON/SARIF/
-    Markdown/Pentest reporters always agree on finding count and severity breakdown given
-    identical scan results.
+- **Confidence calibration:** removed a blanket rule that promoted every signature
+  match to HIGH. Keyword rules (credential/exfil/code-exec/sensitive) now baseline to
+  LOW/INFO and only escalate with real corroborating context. Enforced invariant:
+  confidence never exceeds severity.
+- **Context classifiers:** "token offset" (pagination) no longer reads as a credential;
+  a `.tar.gz` resource is reported as an uninspected archive (INFO), not code execution;
+  open-world/HTTP capability alone is not exfiltration; a keyword in an *output* schema
+  is weaker signal than in an input. Word-boundary matching kills substring false
+  positives (e.g. "eval" inside a filename).
+- **Rule-specific remediation:** each finding now describes what it actually matched,
+  instead of a generic tool-poisoning message.
+- **New `ST_ARCHIVE_UNINSPECTED` (INFO)** and **`SRC_DYNAMIC_CODE_EXEC`** (routes real
+  eval/exec detection to source-scan, where it can be proven against actual code).
+- Restored `ST_DATA_EXFIL` detection on `https://` URLs (word-boundary regression).
+
+### Added
+- Two-sided regression fixtures: a real-world-modeled benign server (produces only
+  INFO/LOW) and the existing known-poisoned fixture (still fires at intended severity)
+  — permanent guards against both false positives and missed detections.
 
 ## [1.9.0] - 2026-07-12
 
