@@ -143,6 +143,68 @@ _PREFIX_REMEDIATION: list[tuple[str, str]] = [
         "descriptions should describe function, not instruct the agent; review and reject if poisoned.",
     ),
     (
+        "ST_ARCHIVE_UNINSPECTED",
+        "An archive-format resource was found (e.g. .tar.gz/.zip/.whl/.jar); its contents were not "
+        "inspected or extracted. Verify its contents/signature before trusting it, and disable any "
+        "automatic extract-and-run behavior in the client.",
+    ),
+    (
+        "ST_CREDENTIAL",
+        "Credential/secret-related terminology matched in the tool text. Confirm the tool doesn't "
+        "request secrets unnecessarily, doesn't instruct revealing environment variables, and doesn't "
+        "transmit or embed credentials; scope secret access narrowly and redact credential values "
+        "from any output.",
+    ),
+    (
+        "ST_DATA_EXFIL",
+        "Terminology describing outbound data transmission (HTTP send/post) matched. Confirm the "
+        "destination is restricted to expected, allowlisted endpoints and that no sensitive data is "
+        "sent without explicit user awareness; add a domain allowlist if the tool makes arbitrary "
+        "outbound requests.",
+    ),
+    (
+        "ST_CODE_EXEC",
+        "Terminology resembling dynamic code execution (eval/exec) matched in the tool text. This "
+        "text-level match alone is not proof of a real sink -- see SRC_DYNAMIC_CODE_EXEC for confirmed "
+        "code paths in server source. If the tool's actual implementation evaluates/executes text "
+        "derived from tool input, remove the dynamic-execution path or strictly sandbox/allowlist "
+        "what can run.",
+    ),
+    (
+        "ST_SENSITIVE",
+        "Terminology referencing sensitive/private/confidential data matched. Confirm this describes "
+        "authorized ACCESS rather than uncontrolled EXPOSURE: enforce least-privilege access to the "
+        "underlying data, and review how any matched output is surfaced/handled downstream.",
+    ),
+    (
+        "ST_FILESYSTEM",
+        "Filesystem write/delete/permission-modification terminology matched. Confirm the tool "
+        "constrains file operations to an expected sandboxed directory and doesn't allow arbitrary "
+        "path traversal or privilege escalation (chmod/sudo).",
+    ),
+    (
+        "ST_READ_FILE",
+        "File-read capability terminology matched. Confirm the tool restricts reads to an expected "
+        "directory and doesn't expose arbitrary filesystem contents to the agent.",
+    ),
+    (
+        "ST_EXECUTE",
+        "Command-execution terminology (curl/execute/subprocess/os.system) matched. Confirm the tool "
+        "doesn't pass agent/LLM-controlled input into a shell or subprocess without validation -- see "
+        "SRC_SHELL_INJECTION for confirmed injectable call sites in server source.",
+    ),
+    (
+        "ST_CONTEXT_HARVEST",
+        "Terminology describing broad conversation/context harvesting matched. Confirm the tool "
+        "doesn't request more conversational context than its stated purpose requires.",
+    ),
+    (
+        "SRC_DYNAMIC_CODE_EXEC",
+        "An LLM-controlled argument flows into eval()/exec()/Function() dynamic code execution. Never "
+        "evaluate or construct code from tool input; remove the dynamic-execution path or strictly "
+        "validate/allowlist what can be evaluated.",
+    ),
+    (
         "ST_",
         "A known tool-poisoning signature matched the tool text (e.g. 'ignore previous', 'bypass'). "
         "Reject the tool and report it to the server author.",
