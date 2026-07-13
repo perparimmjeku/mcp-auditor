@@ -9,7 +9,19 @@ except ImportError:  # pragma: no cover - exercised in minimal local installs
     yaml = None  # type: ignore[assignment]
 
 from ..models import Finding, Severity
+from . import context as context_classifier
 from .surface import label_for_kind, rule_for_kind
+
+_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip", ".whl", ".jar", ".7z", ".tar", ".gz")
+_ARCHIVE_MIME_TYPES = {
+    "application/gzip",
+    "application/x-gzip",
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/x-tar",
+    "application/java-archive",
+    "application/x-7z-compressed",
+}
 
 
 class StaticAnalyzer:
@@ -40,8 +52,34 @@ class StaticAnalyzer:
         text = self._get_text(tool)
 
         for signature in self._builtin:
-            if self._matches(signature["pattern"], text):
+            if not self._matches(signature["pattern"], text):
+                continue
+            rule = signature.get("rule", "STATIC_SIGNATURE")
+            if rule in context_classifier.CLASSIFIED_RULES:
+                outcome = context_classifier.classify(
+                    rule,
+                    signature["pattern"],
+                    text,
+                    self._get_core_text(tool),
+                    self._get_output_text(tool),
+                )
+                if outcome is None:
+                    continue  # context indicates no real security signal
+                severity, confidence = outcome
+                findings.append(
+                    self._finding_from_signature(
+                        signature,
+                        tool_name,
+                        kind,
+                        severity_override=severity,
+                        confidence_override=confidence,
+                    )
+                )
+            else:
                 findings.append(self._finding_from_signature(signature, tool_name, kind))
+
+        if self._is_archive(tool):
+            findings.append(self._archive_finding(tool_name, kind))
 
         # Custom signatures
         for cs in self._custom:
@@ -66,16 +104,58 @@ class StaticAnalyzer:
         return findings
 
     def _finding_from_signature(
-        self, signature: dict[str, Any], tool_name: str, kind: str
+        self,
+        signature: dict[str, Any],
+        tool_name: str,
+        kind: str,
+        severity_override: Severity | None = None,
+        confidence_override: str | None = None,
     ) -> Finding:
         return Finding(
-            severity=signature["severity"],
+            severity=severity_override or signature["severity"],
             rule=rule_for_kind(signature.get("rule", "STATIC_SIGNATURE"), kind),
             message=f"{label_for_kind(kind)} '{tool_name}': "
             f"{signature.get('message', 'Signature match')}",
             owasp_id=signature.get("owasp_id", "MCP03"),
             attack_type=signature.get("attack_type", "tool_poisoning"),
             tool_name=tool_name,
+            confidence=confidence_override,
+        )
+
+    def _get_output_text(self, tool: dict[str, Any]) -> str:
+        """Text from the tool's output schema only -- describes what the
+        tool *returns*, a weaker signal than a request or capability
+        description found elsewhere."""
+        output_schema = tool.get("outputSchema")
+        if not output_schema:
+            return ""
+        return " ".join(self._iter_strings(output_schema))
+
+    def _get_core_text(self, tool: dict[str, Any]) -> str:
+        """Every text field except the output schema."""
+        reduced = {k: v for k, v in tool.items() if k != "outputSchema"}
+        return " ".join(self._iter_strings(reduced))
+
+    @staticmethod
+    def _is_archive(tool: dict[str, Any]) -> bool:
+        name = str(tool.get("name", "")).lower()
+        uri = str(tool.get("uri", "")).lower()
+        mime = str(tool.get("mimeType", "")).lower()
+        if mime in _ARCHIVE_MIME_TYPES:
+            return True
+        return any(name.endswith(suf) or uri.endswith(suf) for suf in _ARCHIVE_SUFFIXES)
+
+    @staticmethod
+    def _archive_finding(tool_name: str, kind: str) -> Finding:
+        return Finding(
+            severity=Severity.INFO,
+            rule=rule_for_kind("ST_ARCHIVE_UNINSPECTED", kind),
+            message=f"{label_for_kind(kind)} '{tool_name}': Archive format detected — "
+            f"contents not inspected; treat as untrusted until verified.",
+            owasp_id="MCP04",
+            attack_type="unverified_archive",
+            tool_name=tool_name,
+            confidence="INFO",
         )
 
     def _load_builtin_signatures(self) -> list[dict[str, Any]]:

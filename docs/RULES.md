@@ -16,6 +16,7 @@ _Known tool-poisoning phrases in tool text_
 | Rule | Confidence |
 |---|---|
 | `ST_ALWAYS_CALL` | HIGH |
+| `ST_ARCHIVE_UNINSPECTED` | INFO |
 | `ST_ALWAYS_USE` | HIGH |
 | `ST_AUTHORITATIVE` | HIGH |
 | `ST_BYPASS` | HIGH |

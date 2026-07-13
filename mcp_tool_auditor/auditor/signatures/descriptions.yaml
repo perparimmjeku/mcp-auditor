@@ -106,19 +106,19 @@ medium_severity:
     owasp_id: "MCP03"
     attack_type: "sensitive_access"
 
-  - pattern: '\bpassword\b'
+  - pattern: '\bpasswords?\b'
     rule: ST_CREDENTIAL
     message: "Credential-related terminology — potential exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: '\bsecret\b'
+  - pattern: '\bsecrets?\b'
     rule: ST_CREDENTIAL
     message: "Credential-related terminology — potential exposure risk."
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: '\btoken\b'
+  - pattern: '\btokens?\b'
     rule: ST_CREDENTIAL
     message: "Token exposure risk."
     owasp_id: "MCP02"
@@ -142,13 +142,13 @@ medium_severity:
     owasp_id: "MCP02"
     attack_type: "credential_exposure"
 
-  - pattern: '\bsend\b.*\bhttp\b'
+  - pattern: '\bsend\w*\b.*\bhttp\b'
     rule: ST_DATA_EXFIL
     message: "Potential data exfiltration via HTTP."
     owasp_id: "MCP03"
     attack_type: "data_exfiltration"
 
-  - pattern: '\bpost\b.*\bdata\b'
+  - pattern: '\bpost(?:s|ed|ing)?\b.*\bdata\b'
     rule: ST_DATA_EXFIL
     message: "Data posting — potential exfiltration."
     owasp_id: "MCP03"
@@ -160,13 +160,13 @@ medium_severity:
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: '\bexecute\b'
+  - pattern: '\bexecut\w*\b'
     rule: ST_EXECUTE
     message: "Command execution indicator."
     owasp_id: "MCP05"
     attack_type: "command_injection"
 
-  - pattern: '\bsubprocess\b'
+  - pattern: '\bsubprocess(?:es)?\b'
     rule: ST_EXECUTE
     message: "Subprocess execution indicator."
     owasp_id: "MCP05"
