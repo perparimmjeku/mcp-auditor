@@ -224,6 +224,7 @@ _Shell-injection sinks in MCP server code_
 | Rule | Confidence |
 |---|---|
 | `SRC_SHELL_INJECTION` | HIGH |
+| `SRC_DYNAMIC_CODE_EXEC` | HIGH |
 
 ## Operational
 

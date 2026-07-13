@@ -18,6 +18,15 @@ _SINK = re.compile(
     re.IGNORECASE,
 )
 
+# Dynamic code execution, as distinct from the shell-spawning sinks above --
+# `eval(` alone (not `child_process.exec(`, which _SINK already covers) and
+# the `new Function(...)` constructor, JS's other route to running a string
+# as code.
+_CODE_EXEC_SINK = re.compile(
+    r"(?<![\w.])eval\s*\(|\bnew\s+Function\s*\(",
+    re.IGNORECASE,
+)
+
 
 def is_mcp_source(source: str) -> bool:
     """True if the file references the MCP SDK."""
@@ -27,6 +36,25 @@ def is_mcp_source(source: str) -> bool:
 def analyze(source: str, path: str) -> list[Finding]:
     findings: list[Finding] = []
     for lineno, line in enumerate(source.splitlines(), start=1):
+        code_exec_match = _CODE_EXEC_SINK.search(line)
+        if code_exec_match:
+            severity = _classify(line[code_exec_match.end() :])
+            if severity is not None:
+                findings.append(
+                    Finding(
+                        severity=severity,
+                        rule="SRC_DYNAMIC_CODE_EXEC",
+                        message=(
+                            f"{path}:{lineno}: dynamic code execution with a non-constant "
+                            f"argument — code injection risk."
+                        ),
+                        owasp_id="MCP05",
+                        attack_type="code_injection",
+                        file=path,
+                        line=lineno,
+                    )
+                )
+
         match = _SINK.search(line)
         if not match:
             continue

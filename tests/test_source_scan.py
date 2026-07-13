@@ -51,6 +51,48 @@ def test_is_mcp_source_python():
     assert python_analyzer.is_mcp_source(NOT_MCP_PY) is False
 
 
+EVAL_PY = """
+import mcp
+
+def handle(arg):
+    return eval(arg)
+"""
+
+EXEC_PY = """
+import mcp
+
+def handle(arg):
+    exec(arg)
+"""
+
+SAFE_EVAL_PY = """
+import mcp
+
+def handle(arg):
+    return eval("1 + 1")
+"""
+
+
+def test_python_detects_eval_as_dynamic_code_exec():
+    findings = python_analyzer.analyze(EVAL_PY, "server.py")
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule == "SRC_DYNAMIC_CODE_EXEC"
+    assert f.severity.value == "HIGH"
+    assert f.owasp_id == "MCP05"
+    assert f.attack_type == "code_injection"
+
+
+def test_python_detects_exec_as_dynamic_code_exec():
+    findings = python_analyzer.analyze(EXEC_PY, "server.py")
+    assert len(findings) == 1
+    assert findings[0].rule == "SRC_DYNAMIC_CODE_EXEC"
+
+
+def test_python_constant_eval_is_not_reported():
+    assert python_analyzer.analyze(SAFE_EVAL_PY, "safe.py") == []
+
+
 # --- JS analyzer ---
 
 VULN_JS = """
@@ -80,6 +122,48 @@ def test_js_detects_template_literal_injection_as_critical():
 
 def test_js_constant_literal_is_not_reported():
     assert js_analyzer.analyze(SAFE_JS, "safe.js") == []
+
+
+EVAL_JS = """
+const { Server } = require("@modelcontextprotocol/sdk/server");
+function handle(arg) {
+  return eval(arg);
+}
+"""
+
+NEW_FUNCTION_JS = """
+const { Server } = require("@modelcontextprotocol/sdk/server");
+function handle(arg) {
+  const f = new Function(arg);
+  return f();
+}
+"""
+
+SAFE_EVAL_JS = """
+const { Server } = require("@modelcontextprotocol/sdk/server");
+function handle(arg) {
+  return eval("1 + 1");
+}
+"""
+
+
+def test_js_detects_eval_as_dynamic_code_exec():
+    findings = js_analyzer.analyze(EVAL_JS, "server.js")
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule == "SRC_DYNAMIC_CODE_EXEC"
+    assert f.severity.value == "HIGH"
+    assert f.owasp_id == "MCP05"
+    assert f.attack_type == "code_injection"
+
+
+def test_js_detects_new_function_as_dynamic_code_exec():
+    findings = js_analyzer.analyze(NEW_FUNCTION_JS, "server.js")
+    assert any(f.rule == "SRC_DYNAMIC_CODE_EXEC" for f in findings)
+
+
+def test_js_constant_eval_is_not_reported():
+    assert js_analyzer.analyze(SAFE_EVAL_JS, "safe.js") == []
 
 
 # --- Scanner over a directory ---

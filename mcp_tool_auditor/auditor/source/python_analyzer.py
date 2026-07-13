@@ -15,6 +15,10 @@ _SUBPROCESS_SHELL = {
     "subprocess.check_output",
     "subprocess.check_call",
 }
+# Bare builtin calls only (ast.Name, not ast.Attribute) -- `obj.exec()` on
+# some unrelated object is a different call entirely and _func_name would
+# return "obj.exec", not "exec", so it's naturally excluded.
+_CODE_EXEC_SINKS = {"eval", "exec"}
 
 
 def is_mcp_source(source: str) -> bool:
@@ -45,6 +49,30 @@ def analyze(source: str, path: str) -> list[Finding]:
         if not isinstance(node, ast.Call):
             continue
         name = _func_name(node)
+
+        if name in _CODE_EXEC_SINKS:
+            cmd_arg = node.args[0] if node.args else None
+            if cmd_arg is None:
+                continue
+            severity = _classify(cmd_arg)
+            if severity is None:
+                continue  # constant literal — not injectable
+            findings.append(
+                Finding(
+                    severity=severity,
+                    rule="SRC_DYNAMIC_CODE_EXEC",
+                    message=(
+                        f"{path}:{node.lineno}: '{name}' called with a non-constant argument — "
+                        f"dynamic code execution risk."
+                    ),
+                    owasp_id="MCP05",
+                    attack_type="code_injection",
+                    file=path,
+                    line=node.lineno,
+                )
+            )
+            continue
+
         cmd_arg = _sink_command_arg(name, node)
         if cmd_arg is None:
             continue
