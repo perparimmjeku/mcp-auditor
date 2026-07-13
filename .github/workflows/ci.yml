@@ -60,4 +60,10 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         run: |
           python -m pip install --upgrade pip-audit
-          pip-audit --strict --skip-editable
+          # Audit only third-party dependencies, not the local project itself.
+          # `pip-audit` over the installed environment tries to look this
+          # package up on PyPI too, which --strict then hard-fails on for any
+          # unreleased version bump (or, with --skip-editable, on the
+          # editable install itself) -- neither is a real vulnerability.
+          pip freeze | grep -v "^-e " | grep -vi "^mcp[_-]tool[_-]auditor" > /tmp/deps.txt
+          pip-audit --strict -r /tmp/deps.txt
