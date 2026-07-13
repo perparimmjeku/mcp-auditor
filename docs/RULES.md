@@ -26,7 +26,7 @@ _Known tool-poisoning phrases in tool text_
 | `ST_DATA_EXFIL` | LOW–MEDIUM* |
 | `ST_DO_NOT_QUESTION` | HIGH |
 | `ST_DO_NOT_TELL` | HIGH |
-| `ST_EXECUTE` | LOW |
+| `ST_EXECUTE` | LOW–MEDIUM* |
 | `ST_FILESYSTEM` | LOW |
 | `ST_IGNORE_ALL` | HIGH |
 | `ST_IGNORE_PREVIOUS` | HIGH |
@@ -39,19 +39,29 @@ _Known tool-poisoning phrases in tool text_
 | `ST_SYSTEM_CLAIM` | HIGH |
 | `ST_YOU_MUST` | HIGH |
 
-_\* `ST_CREDENTIAL`, `ST_DATA_EXFIL`, `ST_SENSITIVE`, and `ST_CODE_EXEC` are bare keyword/
-capability matches (e.g. "token", "secret", "eval", "sensitive") with no context awareness on
-their own -- a false-positive source in practice (see `analyzers/context.py`). Each match is
-classified before it's reported: "token" adjacent to pagination/model-context wording (offset,
-chunk, max\_tokens, context window/length) is suppressed outright as having no security signal;
-real corroborating evidence (an action verb -- reveal/expose/leak/transmit/dump/embed/include/
-submit -- near a credential or sensitive-data noun, or a concrete URL literal for
-`ST_DATA_EXFIL` specifically) escalates `ST_CREDENTIAL`/`ST_DATA_EXFIL` from
-the LOW baseline to MEDIUM; a match found only inside a tool's **output schema** (metadata
-describing what the tool returns, not what it requests) drops one further tier, e.g.
-`ST_SENSITIVE` on an output `private: boolean` field reports at INFO. `ST_CODE_EXEC` has no
-escalation path -- a real dynamic-code-execution finding is `SRC_DYNAMIC_CODE_EXEC`'s job (see
-Source-scan below), not this rule's; it stays LOW even on a clean `eval(`/`exec(` text match._
+_\* `ST_CREDENTIAL`, `ST_DATA_EXFIL`, `ST_SENSITIVE`, `ST_CODE_EXEC`, and `ST_EXECUTE` are bare
+keyword/capability matches (e.g. "token", "secret", "eval", "sensitive", "execute") with no
+context awareness on their own -- a false-positive source in practice (see
+`analyzers/context.py`). Each match is classified before it's reported: "token" adjacent to
+pagination/model-context wording (offset, chunk, max\_tokens, context window/length) is
+suppressed outright as having no security signal; real corroborating evidence escalates from
+the LOW baseline to MEDIUM -- an action verb (reveal/expose/leak/transmit/dump/embed/include/
+submit) near a credential or sensitive-data noun for `ST_CREDENTIAL`, that same signal or a
+concrete URL literal for `ST_DATA_EXFIL`, or an explicit instruction ("run/execute arbitrary",
+"execute/run the following/this/user/agent command/code/script") for `ST_EXECUTE` --
+deliberately not shell metacharacters (semicolons, pipes, backticks, `$(...)`), which are far
+too common in ordinary prose and markdown code-formatting to be reliable on their own. A match
+found only inside a tool's
+**output schema** (metadata describing what the tool returns, not what it requests) drops one
+further tier, e.g. `ST_SENSITIVE` on an output `private: boolean` field reports at INFO.
+`ST_CODE_EXEC` has no escalation path -- a real dynamic-code-execution finding is
+`SRC_DYNAMIC_CODE_EXEC`'s job (see Source-scan below), not this rule's; it stays LOW even on a
+clean `eval(`/`exec(` text match.
+Also excluded from all static-signature scanning entirely: the JSON-Schema `"$schema"`
+meta-schema URI and the MCP `"execution"`/`"taskSupport"` protocol field (both fixed,
+protocol-mandated values no tool author can change), plus the JSON-Schema keyword tokens
+`type`/`properties`/`required`/`additionalProperties`/`enum`/`items` (only the key name is
+skipped -- their values, e.g. parameter descriptions and enum entries, are still fully scanned)._
 
 ## Schema / Full-Schema Poisoning
 

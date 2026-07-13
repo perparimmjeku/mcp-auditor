@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-07-13 — Fix a 1.10.0 regression: protocol boilerplate false-firing
+
+A live scan of the real hf.co/mcp server exposed a regression in 1.10.0's
+recalibration: `ST_EXECUTE` fired "Command execution indicator" (MEDIUM) on all 7
+of its tools, and `ST_DATA_EXFIL` fired on one, none of which mention commands,
+shells, or HTTP exfiltration.
+
+### Fixed
+- **Root cause:** the scanner's text-matching treated every JSON key/value as
+  scannable prose, including fixed MCP/JSON-Schema protocol boilerplate. The MCP
+  `"execution": {"taskSupport": "forbidden"}` field's key name alone matched
+  `ST_EXECUTE`'s pattern; the JSON-Schema `"$schema"` meta-schema URI's "http"
+  component coincidentally co-occurred with an unrelated "send" in one tool's
+  description, tripping `ST_DATA_EXFIL`. Neither field can ever carry
+  attacker-controlled text, so both are now excluded from scanning entirely — a
+  narrowly-scoped exclusion that leaves parameter names, descriptions, enum
+  values, and defaults (where real Full-Schema-Poisoning attacks actually hide)
+  fully scanned, verified explicitly with regression tests.
+- **`ST_EXECUTE` gets the same context-classifier treatment as the other
+  keyword rules:** a bare `curl`/`execute`/`subprocess`/`os.system` mention is
+  LOW; an explicit instruction ("run/execute arbitrary", "execute the following
+  command") escalates to MEDIUM. Deliberately does not treat shell
+  metacharacters as a signal — too common in ordinary prose and markdown
+  code-formatting.
+- **CEILING fixture rebuilt** from the real, structurally-complete hf.co/mcp
+  tool set (all 7 tools, with the real protocol boilerplate) — the previous
+  fixture's simplified tool dicts never exercised this code path, which is
+  exactly how this regression shipped in 1.10.0 undetected.
+
 ## [1.10.0] - 2026-07-13 — Detection precision & honest confidence
 
 The signature engine no longer treats a security-relevant *word* as a security
