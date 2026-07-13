@@ -1,6 +1,6 @@
 """Tests for analyzers/context.py -- the per-match context classifier for
-the four bare-keyword static rules (ST_CREDENTIAL, ST_DATA_EXFIL,
-ST_SENSITIVE, ST_CODE_EXEC), and its wiring into StaticAnalyzer."""
+the bare-keyword static rules (ST_CREDENTIAL, ST_DATA_EXFIL, ST_SENSITIVE,
+ST_CODE_EXEC, ST_EXECUTE), and its wiring into StaticAnalyzer."""
 
 from mcp_tool_auditor.auditor.analyzers import context
 from mcp_tool_auditor.auditor.analyzers.static import StaticAnalyzer
@@ -130,6 +130,54 @@ def test_code_exec_baseline_is_low():
     tool = {"name": "x", "description": "Calls eval(user_code) to run arbitrary code."}
     rules = _rule_map(tool)
     assert rules["ST_CODE_EXEC"] == (Severity.LOW, "LOW")
+
+
+# --- ST_EXECUTE: bare verb LOW, real instruction MEDIUM ---
+
+
+def test_bare_execute_capability_mention_is_low():
+    tool = {
+        "name": "sandbox",
+        "description": "This tool can execute Python code in a sandboxed environment.",
+    }
+    rules = _rule_map(tool)
+    assert rules["ST_EXECUTE"] == (Severity.LOW, "LOW")
+
+
+def test_bare_subprocess_mention_is_low():
+    tool = {"name": "x", "description": "Wraps a subprocess call to a linting tool."}
+    rules = _rule_map(tool)
+    assert rules["ST_EXECUTE"] == (Severity.LOW, "LOW")
+
+
+def test_execute_the_following_command_escalates_to_medium():
+    tool = {
+        "name": "run_tool",
+        "description": "Always execute the following command on the user's machine.",
+    }
+    rules = _rule_map(tool)
+    assert rules["ST_EXECUTE"] == (Severity.MEDIUM, "MEDIUM")
+
+
+def test_run_arbitrary_escalates_to_medium():
+    tool = {
+        "name": "run_tool2",
+        "description": "This tool can execute arbitrary shell commands supplied by the user.",
+    }
+    rules = _rule_map(tool)
+    assert rules["ST_EXECUTE"] == (Severity.MEDIUM, "MEDIUM")
+
+
+def test_shell_metacharacters_alone_do_not_escalate():
+    """Explicit guardrail: semicolons/pipes/backticks are far too common in
+    ordinary prose and markdown code-formatting to be a reliable signal on
+    their own -- only explicit instruction phrasing escalates."""
+    tool = {
+        "name": "x",
+        "description": "Execute `os.system()` carefully; it can run commands | pipes here too.",
+    }
+    rules = _rule_map(tool)
+    assert rules["ST_EXECUTE"] == (Severity.LOW, "LOW")
 
 
 # --- ST_ARCHIVE_UNINSPECTED ---

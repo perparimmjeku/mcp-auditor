@@ -67,15 +67,33 @@ _STRONG_EXFIL_SIGNAL = re.compile(
 # is a materially different, stronger claim.
 _URL_LITERAL = re.compile(r"https?://[\w.\-]+", re.IGNORECASE)
 
+# Real corroborating evidence for a command-execution match: an explicit
+# instruction to run/execute *something supplied* (arbitrary input, "the
+# following"/"this" command, user/agent-provided code) -- as opposed to a
+# bare capability mention like "this tool can execute Python code" or "list,
+# read, find, or search" (which merely names what the tool does). Deliberately
+# does NOT use shell metacharacters (;|`$()) as a signal: they're far too
+# common in ordinary prose and markdown code-formatting (backticks especially)
+# to be a reliable indicator on their own.
+_STRONG_EXECUTE_SIGNAL = re.compile(
+    r"\brun\s+arbitrary\b|"
+    r"\bexecut\w*\s+arbitrary\b|"
+    r"\b(?:execut|run)\w*\s+(?:the\s+)?(?:following|this|user|agent)[\s-]*"
+    r"(?:command|code|script|payload)s?\b",
+    re.IGNORECASE,
+)
+
 _SEVERITY_TIER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
 _CONFIDENCE_TIER = ["INFO", "LOW", "MEDIUM", "HIGH"]
 
-# The four rule families that get per-match context classification. ST_CODE_EXEC
+# The rule families that get per-match context classification. ST_CODE_EXEC
 # has no escalation path (see module docstring in remediation.py / RULES.md:
 # a real dynamic-execution finding is source-scan's SRC_DYNAMIC_CODE_EXEC's
 # job, not a text match's), it only participates for the output-schema
 # tier-down and to route through one call site rather than two.
-CLASSIFIED_RULES = frozenset({"ST_CREDENTIAL", "ST_DATA_EXFIL", "ST_SENSITIVE", "ST_CODE_EXEC"})
+CLASSIFIED_RULES = frozenset(
+    {"ST_CREDENTIAL", "ST_DATA_EXFIL", "ST_SENSITIVE", "ST_CODE_EXEC", "ST_EXECUTE"}
+)
 
 
 def _one_tier_down(severity: Severity, confidence: str) -> tuple[Severity, str]:
@@ -126,6 +144,12 @@ def classify(
         severity, confidence = (
             (Severity.MEDIUM, "MEDIUM")
             if _STRONG_EXFIL_SIGNAL.search(full_text) or _URL_LITERAL.search(full_text)
+            else (Severity.LOW, "LOW")
+        )
+    elif rule == "ST_EXECUTE":
+        severity, confidence = (
+            (Severity.MEDIUM, "MEDIUM")
+            if _STRONG_EXECUTE_SIGNAL.search(full_text)
             else (Severity.LOW, "LOW")
         )
     else:  # ST_SENSITIVE, ST_CODE_EXEC -- no escalation path, LOW baseline only
