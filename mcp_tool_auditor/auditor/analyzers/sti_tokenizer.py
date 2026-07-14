@@ -25,6 +25,7 @@ crashes a scan and never disables anything else.
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any
@@ -92,9 +93,14 @@ class TokenizerRegistry:
             import tokenizers as tokenizers_lib
         except ImportError:
             logger.warning(
-                "--sti-tokenizer requires the optional 'tokenizers' dependency: "
-                "pip install 'mcp-tool-auditor[tokenizers]' (requested: %s). "
-                "Skipping the tokenizer-aware tier; the four string tiers still run.",
+                "--sti-tokenizer requires the optional 'tokenizers' dependency, which is not "
+                "importable from THIS interpreter (%s): pip install 'mcp-tool-auditor"
+                "[tokenizers]' (requested: %s). If you just installed it and still see this, "
+                "you likely installed into a different environment than the one running "
+                "mcp-tool-auditor -- e.g. a pipx install: run 'pipx inject mcp-tool-auditor "
+                "tokenizers' instead of a plain 'pip install' in an unrelated venv/global "
+                "Python. Skipping the tokenizer-aware tier; the four string tiers still run.",
+                sys.executable,
                 ", ".join(names),
             )
             return []

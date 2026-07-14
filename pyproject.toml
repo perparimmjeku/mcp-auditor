@@ -71,7 +71,11 @@ version = { attr = "mcp_tool_auditor.__version__" }
 include = ["mcp_tool_auditor*"]
 
 [tool.setuptools.package-data]
-"mcp_tool_auditor.auditor" = ["signatures/*.yaml", "tokenizer_assets/*.json"]
+"mcp_tool_auditor.auditor" = [
+    "signatures/*.yaml",
+    "tokenizer_assets/*.json",
+    "tokenizer_assets/*.md",
+]
 
 [tool.black]
 line-length = 100

@@ -10,6 +10,7 @@ suite skips cleanly (not a failure, not a fetch) if it's ever absent.
 from __future__ import annotations
 
 import sys
+from importlib import resources
 
 import pytest
 
@@ -81,6 +82,22 @@ def test_resolve_missing_dependency_prints_hint_and_does_not_crash(monkeypatch, 
     resolved = TokenizerRegistry().resolve(["chatml"])
     assert resolved == []
     assert "pip install 'mcp-tool-auditor[tokenizers]'" in caplog.text
+
+
+def test_resolve_missing_dependency_message_names_the_interpreter_and_pipx(monkeypatch, caplog):
+    """1.10.2: an external reviewer hit this exact message with tokenizers
+
+    genuinely installed -- in a DIFFERENT Python environment than the one
+    running mcp-tool-auditor (e.g. pipx-isolated install + a plain `pip
+    install` elsewhere). The message must name the interpreter actually
+    checked and call out the pipx gotcha, so that mismatch is
+    self-diagnosable instead of reading as a lying error.
+    """
+    monkeypatch.setitem(sys.modules, "tokenizers", None)
+    resolved = TokenizerRegistry().resolve(["chatml"])
+    assert resolved == []
+    assert sys.executable in caplog.text
+    assert "pipx inject mcp-tool-auditor tokenizers" in caplog.text
 
 
 # --- find_tokenizer_matches: real vocabulary, not our own strings ----------
@@ -248,3 +265,44 @@ def test_analyzer_missing_extra_still_detects_via_string_tiers(monkeypatch, capl
     assert findings
     assert all(f.rule == "STI_EXACT" for f in findings)  # not upgraded, dependency missing
     assert "pip install 'mcp-tool-auditor[tokenizers]'" in caplog.text
+
+
+# --- packaging fidelity: assets loaded the exact way the installed package
+# loads them (importlib.resources), not a repo-relative path. Three real
+# bugs this session (version shadowing, protocol-metadata FP, this tokenizer
+# report) only surfaced in the installed artifact, never in-repo -- this is
+# the cheap, always-on guard against that whole bug class recurring here. ---
+
+
+def test_every_supported_tokenizer_asset_loads_via_importlib_resources():
+    """Every filename `_SUPPORTED_TOKENIZERS` maps to must actually be
+
+    readable through `importlib.resources` (the production load path) and
+    parse as a real tokenizer -- not just present on disk in the repo.
+    """
+    import tokenizers as tokenizers_lib
+
+    from mcp_tool_auditor.auditor.analyzers.sti_tokenizer import _SUPPORTED_TOKENIZERS
+
+    for filename in sorted(set(_SUPPORTED_TOKENIZERS.values())):
+        json_text = (
+            resources.files("mcp_tool_auditor.auditor.tokenizer_assets")
+            .joinpath(filename)
+            .read_text(encoding="utf-8")
+        )
+        tok = tokenizers_lib.Tokenizer.from_str(json_text)
+        assert tok.get_added_tokens_decoder()
+
+
+def test_third_party_notices_is_packaged_alongside_the_assets():
+    """Provenance doc referenced from this module's own docstring must ship
+
+    with the assets it documents -- package-data must declare it, not just
+    the *.json files.
+    """
+    text = (
+        resources.files("mcp_tool_auditor.auditor.tokenizer_assets")
+        .joinpath("THIRD_PARTY_NOTICES.md")
+        .read_text(encoding="utf-8")
+    )
+    assert text.strip()
