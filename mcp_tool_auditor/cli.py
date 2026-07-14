@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 mcp-tool-auditor - MCP Tool Poisoning Scanner
-OWASP MCP Top 10 Compliant | Defensive + Offensive tooling
+Findings mapped to the OWASP MCP Top 10 | Defensive + Offensive tooling
 """
 
 from __future__ import annotations
@@ -210,6 +210,11 @@ Examples:
   # Start a rug-pull simulation server
   mcp-tool-auditor attack rugpull --port 8081 --switch-after 5
         """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"mcp-tool-auditor {__version__}",
     )
     parser.add_argument(
         "-v",
