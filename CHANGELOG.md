@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-07-14 — Tokenizer-tier diagnostics, --version, report clarity
+
+An external reviewer on Python 3.13 reported `--sti-tokenizer` still saying "requires
+the optional 'tokenizers' dependency" with `tokenizers` genuinely installed. Reproduced
+the exact scenario from the real published wheel across three fresh environments (a
+local rebuild, the actual downloaded PyPI 1.10.1 wheel, and a Linux container) — none
+reproduced a code bug. The vendored `.tokenizer.json` assets are correctly packaged and
+load fine; the error-handling already separates "import failed" from "asset failed to
+load." The one scenario that reproduces the exact message truthfully is installing
+`tokenizers` into a *different* Python environment than the one running
+`mcp-tool-auditor` (most plausibly a `pipx`-isolated install plus a stray `pip install`
+elsewhere) — accurate behavior, but the message gave no way to self-diagnose it.
+
+### Fixed
+- **Tokenizer packaging gap:** `tokenizer_assets/THIRD_PARTY_NOTICES.md` was never
+  declared in `package-data` (only `*.json` was), so it silently dropped from the wheel.
+  Now packaged; a regression test loads every vendored asset via `importlib.resources`
+  the way the installed package does, and a new CI job builds the wheel, installs it
+  fresh with the `[tokenizers]` extra, and asserts `STI_TOKENIZER` actually fires on a
+  real ChatML control token from the installed artifact — the durable guard against
+  this project's recurring "works in-repo, breaks from the wheel" bug class.
+- **Missing-dependency message** now names the interpreter it actually checked
+  (`sys.executable`) and calls out the `pipx inject mcp-tool-auditor tokenizers` fix
+  explicitly, instead of a generic hint that reads as a lie when the mismatch is an
+  isolated-environment gotcha.
+- **`--version`** now works (`mcp-tool-auditor --version`); previously errored with
+  "unrecognized arguments."
+- **Markdown report** now shows per-finding **confidence** and **rule-specific
+  remediation** — previously only severity and a generic 8-point recommendations block,
+  so a HIGH-severity/MEDIUM-confidence finding read as high-certainty. The pentest
+  reporter already rendered both.
+- **Report footer overclaim:** replaced "OWASP MCP Top 10 Compliant" (implies
+  certification/full coverage the tool doesn't have — it maps findings to
+  MCP01/02/03/05) with "Findings mapped to the OWASP MCP Top 10" plus author
+  attribution, across the markdown/pentest footers, the CLI docstring, and the
+  JSON/SARIF metadata fields.
+
 ## [1.10.1] - 2026-07-13 — Fix a 1.10.0 regression: protocol boilerplate false-firing
 
 A live scan of the real hf.co/mcp server exposed a regression in 1.10.0's

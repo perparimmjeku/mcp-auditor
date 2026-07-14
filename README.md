@@ -473,6 +473,13 @@ pip install 'mcp-tool-auditor[tokenizers]'
 mcp-tool-auditor scan url http://localhost:8080/mcp --sti-tokenizer chatml,mistral
 ```
 
+> **Installed with `pipx`?** `pipx` isolates `mcp-tool-auditor` into its own private
+> venv, so a plain `pip install tokenizers` elsewhere won't be visible to it — you'll see
+> the "requires the optional 'tokenizers' dependency" warning even though `pip` reports
+> tokenizers installed successfully. Use `pipx inject mcp-tool-auditor tokenizers` instead
+> so the extra lands in the same environment the `mcp-tool-auditor` command actually runs
+> from.
+
 `--sti-tokenizer` takes a comma list of target families: `chatml`, `qwen` (alias for the
 same ChatML-family tokenizer), `mistral`, `deepseek`. Each resolves to a real, offline,
 license-verified `tokenizer.json` vendored in the package (see
