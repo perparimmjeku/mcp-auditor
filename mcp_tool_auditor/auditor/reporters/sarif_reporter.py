@@ -124,6 +124,7 @@ class SarifReporter:
                         "driver": {
                             "name": "mcp-tool-auditor",
                             "version": __version__,
+                            "organization": "Përparim Mjeku",
                             "informationUri": "https://github.com/perparimmjeku/mcp-auditor",
                             "rules": sorted_rules,
                         }

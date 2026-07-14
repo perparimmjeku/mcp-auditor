@@ -13,6 +13,8 @@ class JSONReporter:
             "scan_metadata": {
                 "tool": "mcp-tool-auditor",
                 "version": __version__,
+                "author": "Përparim Mjeku",
+                "author_url": "https://www.linkedin.com/in/p%C3%ABrparimmjeku/",
                 "owasp_version": "OWASP MCP Top 10 (2025)",
             },
             "summary": {
